@@ -4,3 +4,6 @@
 .auth-card .message{min-height:22px;font-size:13px;overflow-wrap:anywhere}
 .auth-card input:focus{outline:3px solid #7165d833;border-color:var(--purple)}
 .auth-card button:disabled{opacity:.65;cursor:wait}
+
+/* Ensure the login wrapper is fully removed after successful sign-in. */
+.auth[hidden]{display:none!important}
