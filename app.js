@@ -10,10 +10,58 @@ function show(view){if(profile?.role!=='admin'&&['users'].includes(view))view='d
 function localQueue(){return JSON.parse(localStorage.getItem('dishaPending')||'[]')}
 function queue(op,table,row){const q=localQueue();q.push({op,table,row,created_at:new Date().toISOString()});localStorage.setItem('dishaPending',JSON.stringify(q));msg('Saved on this device. It will sync when internet returns.');}
 async function syncQueue(){if(!client||!navigator.onLine)return;let q=localQueue(),left=[];for(const item of q){let {error}=item.op==='upsert'?await client.from(item.table).upsert(item.row,{onConflict:item.table==='students'?'admission_no':'student_id,attendance_date'}):await client.from(item.table).insert(item.row);if(error){left.push(item);console.error(error)}}localStorage.setItem('dishaPending',JSON.stringify(left));msg(left.length?`${left.length} item(s) still need syncing. Check connection or permissions.`:'All pending changes synced.');if(!left.length)await loadStudents();}
-async function init(){if(!SUPABASE_URL||!SUPABASE_ANON_KEY||!window.supabase){$('#authMsg').textContent='Setup required: add your Supabase URL and publishable/anon key in config.js.';return;}client=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});$('#connection').textContent=navigator.onLine?'Connected to app service':'Offline';client.auth.onAuthStateChange(()=>{});const {data:{session}}=await client.auth.getSession();if(session)await enterApp();}
+async function init(){if(!SUPABASE_URL||!SUPABASE_ANON_KEY||!window.supabase){$('#authMsg').textContent='Setup required: add your Supabase URL and publishable/anon key in config.js.';return;}client=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+$('#connection').textContent=navigator.onLine?'Connected to app service':'Offline';
+client.auth.onAuthStateChange((event, session)=>{
+  if(event==='PASSWORD_RECOVERY'){
+    showPasswordReset();
+  }
+});
+const {data:{session}}=await client.auth.getSession();
+if(session && !location.hash.includes('type=recovery')) await enterApp();}
 async function enterApp(){const {data:{session}}=await client.auth.getSession();const user=session?.user;if(!user)return;let data=null,error=null;if(navigator.onLine){({data,error}=await client.from('profiles').select('display_name,role').eq('id',user.id).single());if(!error)localStorage.setItem('dishaProfileCache',JSON.stringify({...data,email:user.email,id:user.id}));}else{data=JSON.parse(localStorage.getItem('dishaProfileCache')||'null');if(!data)error={message:'First sign-in and profile sync require internet.'};}if(error){$('#authMsg').textContent='Your account profile is unavailable. Connect to the internet or ask the school Admin to complete staff setup.';return;}profile={...data,email:user.email,id:user.id};$('#login').hidden=true;$('#app').hidden=false;$('#role').textContent=profile.role.toUpperCase();document.querySelectorAll('.admin-only').forEach(x=>x.hidden=profile.role!=='admin');await syncQueue();await loadStudents();show('dashboard');}
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!client){$('#authMsg').textContent='Complete Supabase setup first (see SETUP.md).';return;}const f=new FormData(e.target);$('#authMsg').textContent='Signing in…';const {error}=await client.auth.signInWithPassword({email:f.get('email'),password:f.get('password')});if(error){$('#authMsg').textContent=error.message;return;}await enterApp();});
-$('#forgot').onclick=async()=>{if(!client){$('#authMsg').textContent='Complete Supabase setup first.';return;}const email=$('#loginForm [name=email]').value;if(!email){$('#authMsg').textContent='Enter your email first.';return;}const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:location.origin});$('#authMsg').textContent=error?error.message:'Password reset email requested. Check your inbox.';};
+function showPasswordReset(message=''){
+  $('#loginForm').hidden=true;
+  $('#resetPasswordForm').hidden=false;
+  $('#app').hidden=true;
+  $('#login').hidden=false;
+  $('#resetMsg').textContent=message || 'Enter and confirm your new password below.';
+}
+function showLogin(message=''){
+  $('#resetPasswordForm').hidden=true;
+  $('#loginForm').hidden=false;
+  $('#login').hidden=false;
+  $('#app').hidden=true;
+  $('#authMsg').textContent=message;
+  $('#resetMsg').textContent='';
+}
+$('#forgot').onclick=async()=>{
+  if(!client){$('#authMsg').textContent='Complete Supabase setup first.';return;}
+  const email=$('#loginForm [name=email]').value.trim();
+  if(!email){$('#authMsg').textContent='Enter your registered email address first.';return;}
+  $('#authMsg').textContent='Sending password reset email…';
+  const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:location.origin + '/'});
+  $('#authMsg').textContent=error?('Could not send reset email: '+error.message):'Password reset email sent. Open the newest email link on this device. The link can only be used once.';
+};
+$('#resetPasswordForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!client){$('#resetMsg').textContent='Supabase is not connected.';return;}
+  const f=new FormData(e.currentTarget);
+  const password=String(f.get('password')||'');
+  const confirmPassword=String(f.get('confirmPassword')||'');
+  if(password.length<8){$('#resetMsg').textContent='Your password must contain at least 8 characters.';return;}
+  if(password!==confirmPassword){$('#resetMsg').textContent='The passwords do not match. Please try again.';return;}
+  const button=$('#saveNewPassword');
+  button.disabled=true;button.textContent='Saving…';$('#resetMsg').textContent='Updating your password securely…';
+  const {error}=await client.auth.updateUser({password});
+  button.disabled=false;button.textContent='Save new password';
+  if(error){$('#resetMsg').textContent='Password was not updated: '+error.message;return;}
+  await client.auth.signOut();
+  history.replaceState(null,'',location.pathname+location.search);
+  e.currentTarget.reset();
+  showLogin('Your password has been updated successfully. Please sign in using your new password.');
+});
 $('#logout').onclick=async()=>{await client?.auth.signOut();profile=null;$('#app').hidden=true;$('#login').hidden=false;};
 $('#changePassword').onclick=async()=>{if(!client)return;const p=prompt('Enter a new password (minimum 8 characters):');if(!p)return;if(p.length<8){alert('Use at least 8 characters.');return;}const {error}=await client.auth.updateUser({password:p});alert(error?error.message:'Password updated.');};
 document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>show(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));

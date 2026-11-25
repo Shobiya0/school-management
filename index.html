@@ -1,5 +1,21 @@
-<!doctype html><n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#7165d8"><meta name="description" content="Disha Preschool school management"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/assets/icon.svg"><title>Disha Preschool | Management</title><link rel="stylesheet" href="/styles.css"></head><body>
-<div id="login" class="auth"><form id="loginForm" class="auth-card"><div class="logo">🌈</div><small>DISHA PRESCHOOL</small><h1>Welcome back!</h1><p>Sign in to your school workspace</p><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">Sign in</button><button type="button" class="link" id="forgot">Forgot password?</button><p id="authMsg" class="message"></p></form></div>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#7165d8"><meta name="description" content="Disha Preschool school management"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/assets/icon.svg"><title>Disha Preschool | Management</title><link rel="stylesheet" href="/styles.css"></head><body>
+<div id="login" class="auth">
+<form id="loginForm" class="auth-card">
+<div class="logo">🌈</div><small>DISHA PRESCHOOL</small><h1>Welcome back!</h1><p>Sign in to your school workspace</p>
+<label>Email<input name="email" type="email" autocomplete="username" required></label>
+<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+<button class="primary">Sign in</button><button type="button" class="link" id="forgot">Forgot password?</button>
+<p id="authMsg" class="message" role="status" aria-live="polite"></p>
+</form>
+<form id="resetPasswordForm" class="auth-card" hidden>
+<div class="logo">🔐</div><small>DISHA PRESCHOOL</small><h1>Create a new password</h1>
+<p>Choose a new password for your school account.</p>
+<label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+<label>Confirm new password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+<button class="primary" type="submit" id="saveNewPassword">Save new password</button>
+<p id="resetMsg" class="message" role="status" aria-live="polite"></p>
+</form>
+</div>
 <div id="app" hidden><aside class="sidebar"><div class="brand"><span class="logo">🌈</span><div><b>Disha Preschool</b><small>Little Steps, Bright Futures</small></div></div><nav><button class="nav active" data-view="dashboard">🏡 Dashboard</button><button class="nav" data-view="students">🧒 Students</button><button class="nav" data-view="attendance">📅 Attendance</button><button class="nav" data-view="fees">💳 Fees</button><button class="nav" data-view="operations">🧩 School records</button><button class="nav admin-only" data-view="users">👩‍🏫 Staff access</button><button class="nav" data-view="settings">⚙️ Settings & backup</button></nav><div class="sidebar-foot">Secure school workspace</div></aside>
 <main><header class="top"><div><span class="eyebrow">SCHOOL MANAGEMENT</span><h1 id="heading">Dashboard</h1><p id="subheading">Your school at a glance</p></div><div class="userbox"><span id="role"></span><button id="changePassword" class="soft">Change password</button><button id="logout" class="danger">Sign out</button></div></header>
 <section id="dashboard" class="view"><div class="hero"><div><small>DISHA PRESCHOOL</small><h2>Every little step is a big achievement! 🌟</h2><p>Manage student records, attendance and school operations in one place.</p></div><div class="hero-art">🎨🧸📚</div></div><div class="stats" id="stats"></div><div class="panel"><div class="panel-head"><h2>Recently added students</h2><button class="soft" data-go="students">View students</button></div><div id="recent"></div></div></section>

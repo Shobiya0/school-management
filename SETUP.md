@@ -87,3 +87,18 @@ Use a unique admission number for every student. Existing admission numbers are 
 - `config.js.example` – safe client configuration template.
 - `supabase/migrations/001_initial_schema.sql` – database tables and row-level security policies.
 - `manifest.webmanifest`, `sw.js`, `assets/icon.svg` – PWA support.
+
+
+## Password reset URL configuration
+
+In Supabase Dashboard, open **Authentication → URL Configuration**.
+Set **Site URL** to your deployed Vercel production URL (for example,
+`https://your-project.vercel.app`) and add that same URL plus
+`https://your-project.vercel.app/**` under **Redirect URLs**. The URL used
+by the app for password recovery is the current site origin. Keep localhost
+only if you also test locally. After saving, request a fresh reset email;
+older reset links may have expired or already been used.
+
+When the reset link opens the app, the app listens for Supabase's
+`PASSWORD_RECOVERY` event, displays the new-password form, checks that both
+password entries match, and saves the password with Supabase Auth.
