@@ -1,0 +1,35 @@
+DISHA PRESCHOOL — STAFF PHOTOS & SCHOOL RECORDS UPDATE
+
+WHAT THIS UPDATE ADDS
+1. Admin-managed staff directory with name, email, designation, phone, short bio and photo.
+2. Staff photos are stored in a PRIVATE Supabase Storage bucket named staff-photos.
+3. Only Admin can add/edit staff directory entries and upload staff photos. Admin and Teacher can view staff directory/photos.
+4. School Records now contains clearly labelled SAMPLE/DEMO content for Admissions, Montessori observations, Child Progress, Timetable, Daycare and Inventory.
+5. Parent portal and student photo functionality from the previous update are retained.
+
+IMPORTANT: SCHOOL RECORDS DEMO DATA
+The six School Records sections currently show fictional sample rows in the browser only. They are not written to Supabase and must not be treated as actual attendance, observations, payments, care records or stock counts. Replace them with live database workflows before operational use.
+
+INSTALL
+1. Upload the extracted project files to the ROOT of the existing GitHub repository, replacing files with the same names. Do not upload the outer ZIP as a single file and do not create a nested project folder.
+2. Commit the changes and wait for Vercel to deploy.
+3. In Supabase Dashboard → SQL Editor → New query, open and run:
+   supabase/staff-photo-setup/003_staff_directory_and_photos.sql
+4. The SQL creates the staff_directory table, its row-level security policies, the private staff-photos bucket and its storage policies.
+5. Keep the existing student photo SQL and parent photo RPC SQL already run in the project. Do not rerun unrelated setup unless needed.
+6. Sign in as Admin, open Staff access, choose Add staff profile, fill in the details and select a JPG/PNG/WEBP photo (maximum 2 MB).
+7. Sign in as Teacher to verify the staff directory is visible but the Add staff profile control is not available.
+
+STAFF LOGIN ACCOUNTS
+This staff directory stores profile details and photos only. It does not create Auth users, set passwords, or change roles. Create staff login accounts in Supabase Authentication → Users and assign the appropriate role separately.
+
+PHOTO PRIVACY
+Student and staff photos are stored in private buckets. The app creates time-limited signed URLs for display. Do not make these buckets public.
+
+TESTING
+- Admin: can add/edit staff directory records and upload staff photos.
+- Teacher: can view the staff directory and staff photos.
+- Parent: cannot access staff directory or School Records.
+- Parent: sees only children linked to that parent account through the restricted RPC functions.
+
+If the SQL reports an error, stop and share the exact error text rather than changing table policies manually.

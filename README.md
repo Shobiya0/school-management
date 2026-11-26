@@ -20,3 +20,6 @@ Photos are not included in Excel exports. The package displays photos in the sta
 
 ## Parent dashboard and student photos
 This update includes a restricted parent dashboard for linked children and private student photo display. Follow `PARENT-DASHBOARD-SETUP.txt` before creating parent accounts. The parent dashboard relies on the restricted parent RPCs created in the earlier database setup plus `002_parent_photo_rpc.sql`. Do not expose the Supabase service-role key in frontend files.
+
+## Staff photos and School Records demo
+See `STAFF-PHOTO-AND-SCHOOL-RECORDS-SETUP.txt`. Run `supabase/staff-photo-setup/003_staff_directory_and_photos.sql` in Supabase SQL Editor before using the staff directory photo upload. The School Records page currently contains clearly labelled fictional demo rows for preview only; they are not live database records.

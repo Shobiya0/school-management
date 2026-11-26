@@ -1,12 +1,12 @@
 const SUPABASE_URL = window.DISHA_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = window.DISHA_SUPABASE_ANON_KEY || '';
 const $ = (s)=>document.querySelector(s);
-let client=null, profile=null, students=[], attendance=[];
+let client=null, profile=null, students=[], attendance=[], staffMembers=[];
 const labels={parentDashboard:['Parent dashboard','Your child’s school updates'],dashboard:['Dashboard','Your school at a glance'],students:['Students','Student records and Excel tools'],attendance:['Attendance','Daily class attendance'],fees:['Fees & payments','Track student payments'],operations:['School records','Additional school operations'],users:['Staff access','Manage authorized school accounts'],settings:['Settings & backup','Connection and data safety']};
 const onlineReady=()=>!!client;
 function msg(t){$('#syncStatus').textContent=t;}
 function esc(v=''){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function show(view){if(profile?.role==='parent'&&view!=='parentDashboard')view='parentDashboard';if(profile?.role!=='parent'&&view==='parentDashboard')view='dashboard';if(profile?.role!=='admin'&&['users'].includes(view))view='dashboard';document.querySelectorAll('.view').forEach(x=>x.hidden=x.id!==view);document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===view));$('#heading').textContent=labels[view][0];$('#subheading').textContent=labels[view][1];if(view==='students')renderStudents();if(view==='attendance')renderAttendance();if(view==='fees')loadFees();if(view==='dashboard')renderDashboard();if(view==='parentDashboard')loadParentDashboard();}
+function show(view){if(profile?.role==='parent'&&view!=='parentDashboard')view='parentDashboard';if(profile?.role!=='parent'&&view==='parentDashboard')view='dashboard';if(profile?.role!=='admin'&&['users'].includes(view))view='dashboard';document.querySelectorAll('.view').forEach(x=>x.hidden=x.id!==view);document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===view));$('#heading').textContent=labels[view][0];$('#subheading').textContent=labels[view][1];if(view==='students')renderStudents();if(view==='attendance')renderAttendance();if(view==='fees')loadFees();if(view==='dashboard')renderDashboard();if(view==='parentDashboard')loadParentDashboard();if(view==='users')loadStaffDirectory();}
 function localQueue(){return JSON.parse(localStorage.getItem('dishaPending')||'[]')}
 function queue(op,table,row){const q=localQueue();q.push({op,table,row,created_at:new Date().toISOString()});localStorage.setItem('dishaPending',JSON.stringify(q));msg('Saved on this device. It will sync when internet returns.');}
 async function syncQueue(){if(!client||!navigator.onLine)return;let q=localQueue(),left=[];for(const item of q){let {error}=item.op==='upsert'?await client.from(item.table).upsert(item.row,{onConflict:item.table==='students'?'admission_no':'student_id,attendance_date'}):await client.from(item.table).insert(item.row);if(error){left.push(item);console.error(error)}}localStorage.setItem('dishaPending',JSON.stringify(left));msg(left.length?`${left.length} item(s) still need syncing. Check connection or permissions.`:'All pending changes synced.');if(!left.length)await loadStudents();}
@@ -190,5 +190,67 @@ async function renderAttendance(){if(!client)return;$('#attDate').value ||= new 
 $('#attDate').onchange=renderAttendance;$('#saveAttendance').onclick=async()=>{const date=$('#attDate').value;const rows=[...document.querySelectorAll('[data-att]')].map(x=>({student_id:x.dataset.att,attendance_date:date,status:x.value,marked_by:profile.id}));if(!navigator.onLine){rows.forEach(r=>queue('upsert','attendance',r));return;}for(const r of rows){const {error}=await client.from('attendance').upsert(r,{onConflict:'student_id,attendance_date'});if(error){msg(error.message);return;}}msg('Attendance saved.');};
 async function loadFees(){const {data,error}=await client.from('fee_payments').select('*,students(full_name,admission_no)').order('payment_date',{ascending:false});if(error){msg(error.message);return;}$('#feeTable').innerHTML=table((data||[]).map(x=>({student:x.students?.full_name||'',admission_no:x.students?.admission_no||'',amount:'₹'+x.amount,month:x.fee_month,payment_date:x.payment_date,mode:x.payment_mode})),['student','admission_no','amount','month','payment_date','mode']);}
 $('#addPayment').onclick=async()=>{if(!students.length){alert('Add students first.');return;}const id=prompt('Enter the student admission number:');const s=students.find(x=>x.admission_no===id);if(!s){alert('Student not found.');return;}const amount=Number(prompt('Payment amount (₹):'));if(!amount||amount<0)return;const month=prompt('Fee month (e.g. November 2026):','November 2026');const row={student_id:s.id,amount,fee_month:month||'',payment_date:new Date().toISOString().slice(0,10),payment_mode:'Cash',recorded_by:profile.id};const {error}=await client.from('fee_payments').insert(row);if(error){msg(error.message);return;}loadFees();};
+
+// Staff directory and private staff photo uploads (Admin-managed).
+async function staffPhotoUrl(path){
+  if(!path||!client||!navigator.onLine)return '';
+  const {data,error}=await client.storage.from('staff-photos').createSignedUrl(path,3600);
+  if(error){console.warn('Could not create staff photo URL:',error.message);return '';}
+  return data?.signedUrl||'';
+}
+async function loadStaffDirectory(){
+  const host=$('#staffTable');if(!host||!client)return;
+  host.innerHTML='<p class="muted">Loading staff profiles…</p>';
+  const {data,error}=await client.from('staff_directory').select('*').order('full_name');
+  if(error){host.innerHTML='<p class="message">Could not load staff directory: '+esc(error.message)+'</p>';return;}
+  staffMembers=data||[];await renderStaffDirectory();
+}
+async function renderStaffDirectory(){
+  const host=$('#staffTable');if(!host)return;
+  if(!staffMembers.length){host.innerHTML='<p class="muted">No staff profiles yet. Select “Add staff profile” to create the first directory entry.</p>';return;}
+  const urls=await Promise.all(staffMembers.map(x=>staffPhotoUrl(x.photo_path)));
+  host.innerHTML=`<table><thead><tr><th>Photo</th><th>Name</th><th>Designation</th><th>Email</th><th>Phone</th><th>Status</th><th>Action</th></tr></thead><tbody>${staffMembers.map((x,i)=>`<tr><td>${urls[i]?`<img class="staff-thumb" src="${esc(urls[i])}" alt="${esc(x.full_name)}">`:'<span class="photo-placeholder">👩‍🏫</span>'}</td><td><b>${esc(x.full_name)}</b><br><small>${esc(x.bio||'')}</small></td><td>${esc(x.designation)}</td><td>${esc(x.email||'')}</td><td>${esc(x.phone||'')}</td><td>${x.active?'<span class="tag">Active</span>':'Inactive'}</td><td><button class="soft" data-staff-edit="${esc(x.id)}">Edit</button></td></tr>`).join('')}</tbody></table>`;
+  host.querySelectorAll('[data-staff-edit]').forEach(b=>b.onclick=()=>openStaff(staffMembers.find(x=>x.id===b.dataset.staffEdit)));
+}
+async function openStaff(item={}){
+  const form=$('#staffForm');form.reset();
+  for(const [k,v] of Object.entries(item||{}))if(form.elements[k]&&form.elements[k].type!=='file')form.elements[k].value=v??'';
+  const preview=$('#staffPhotoPreview');preview.hidden=true;preview.removeAttribute('src');
+  if(item?.photo_path){const url=await staffPhotoUrl(item.photo_path);if(url){preview.src=url;preview.hidden=false;}}
+  $('#staffModalTitle').textContent=item?.id?'Edit staff profile':'Add staff profile';$('#staffModal').hidden=false;
+}
+$('#addStaff').onclick=()=>openStaff();
+$('#closeStaffModal').onclick=$('#cancelStaffModal').onclick=()=>{$('#staffModal').hidden=true;$('#staffPhoto').value='';};
+$('#staffPhoto').onchange=e=>{
+  const file=e.target.files?.[0],preview=$('#staffPhotoPreview');
+  if(!file){preview.hidden=true;return;}
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)){alert('Choose a JPG, PNG or WEBP image.');e.target.value='';preview.hidden=true;return;}
+  if(file.size>2*1024*1024){alert('Staff photo must be 2 MB or smaller.');e.target.value='';preview.hidden=true;return;}
+  if(preview.dataset.objectUrl)URL.revokeObjectURL(preview.dataset.objectUrl);
+  preview.dataset.objectUrl=URL.createObjectURL(file);preview.src=preview.dataset.objectUrl;preview.hidden=false;
+};
+$('#staffForm').onsubmit=async e=>{
+  e.preventDefault();if(profile?.role!=='admin'){alert('Only Admin can manage staff profiles.');return;}
+  const photo=$('#staffPhoto').files?.[0]||null;
+  const row=Object.fromEntries(new FormData(e.currentTarget));delete row.id;
+  const id=e.currentTarget.elements.id.value;const old=staffMembers.find(x=>x.id===id);
+  if(old?.photo_path)row.photo_path=old.photo_path;
+  if(!navigator.onLine){alert('Connect to the internet to save staff profiles and photos.');return;}
+  const submit=e.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;submit.textContent='Saving…';
+  try{
+    let result;
+    if(id)result=await client.from('staff_directory').update({...row,updated_at:new Date().toISOString()}).eq('id',id).select().single();
+    else result=await client.from('staff_directory').insert(row).select().single();
+    if(result.error)throw result.error;
+    const saved=result.data;
+    if(photo){const ext=photo.type==='image/jpeg'?'jpg':photo.type.split('/')[1];const path=`${saved.id}/${Date.now()}.${ext}`;
+      const up=await client.storage.from('staff-photos').upload(path,photo,{contentType:photo.type,upsert:false});if(up.error)throw up.error;
+      const upd=await client.from('staff_directory').update({photo_path:path,updated_at:new Date().toISOString()}).eq('id',saved.id);if(upd.error)throw upd.error;
+    }
+    $('#staffModal').hidden=true;$('#staffPhoto').value='';$('#staffMessage').textContent='Staff profile saved.';await loadStaffDirectory();
+  }catch(err){$('#staffMessage').textContent='Could not save staff profile: '+(err.message||err);}
+  finally{submit.disabled=false;submit.textContent='Save staff profile';}
+};
+
 $('#exportBackup').onclick=()=>{const blob=new Blob([JSON.stringify({exported_at:new Date().toISOString(),students},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='disha-preschool-backup.json';a.click();URL.revokeObjectURL(a.href);};$('#syncNow').onclick=syncQueue;window.addEventListener('online',syncQueue);window.addEventListener('online',()=>$('#connection').textContent='Connected');window.addEventListener('offline',()=>$('#connection').textContent='Offline');
-if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(console.error));init();
+if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).then(reg=>reg.update()).catch(console.error));init();
