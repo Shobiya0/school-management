@@ -1,0 +1,66 @@
+DISHA PRESCHOOL — PARENT DASHBOARD SETUP
+========================================
+
+WHAT THIS UPDATE ADDS
+- Parent accounts sign in through the same login screen as staff.
+- Parent accounts see only children linked to their user ID.
+- The dashboard shows child details, attendance, progress notes, Montessori observations, fee payments, daycare records and class timetable.
+- Student photos are loaded using a restricted RPC and private Storage signed URLs.
+- Parent accounts cannot open staff screens.
+
+DATABASE PREREQUISITES
+The following parent-access SQL from the earlier setup must already exist in this Supabase project:
+- profiles.role allows: admin, teacher, parent
+- parent_student_links table
+- public.is_parent_of_student(uuid)
+- public.get_my_linked_children()
+- public.get_my_child_attendance(uuid)
+- public.get_my_child_progress(uuid)
+- public.get_my_child_observations(uuid)
+- public.get_my_child_fees(uuid)
+- public.get_my_child_daycare(uuid)
+- public.get_my_child_timetable(uuid)
+
+Run these scripts in Supabase SQL Editor if not already run:
+1. supabase/student-photo-setup/001_student_photos.sql
+2. supabase/student-photo-setup/002_parent_photo_rpc.sql
+
+The private Storage bucket must be named student-photos, with JPG, PNG and WEBP allowed and a 2 MB file limit. The SQL in 001 creates the Storage policies used by this app.
+
+CREATE A PARENT LOGIN (repeat for each parent)
+1. In Supabase Dashboard, open Authentication → Users → Add user.
+2. Enter the parent's email and set a temporary password. Do not share this password in a public spreadsheet.
+3. After the user is created, run the SQL template below, replacing the email and admission number.
+4. Give the parent their login details privately. They can use Forgot password? or Change password after signing in.
+
+SQL TEMPLATE — SET ROLE AND LINK ONE CHILD
+Replace parent@example.com and DEMO010 before running:
+
+UPDATE public.profiles AS p
+SET role = 'parent'
+FROM auth.users AS u
+WHERE p.id = u.id
+  AND lower(u.email) = lower('parent@example.com');
+
+INSERT INTO public.parent_student_links (parent_user_id, student_id)
+SELECT p.id, s.id
+FROM public.profiles AS p
+JOIN auth.users AS u ON u.id = p.id
+JOIN public.students AS s ON s.admission_no = 'DEMO010'
+WHERE lower(u.email) = lower('parent@example.com')
+ON CONFLICT (parent_user_id, student_id) DO NOTHING;
+
+For the second parent of the same child, create a separate Auth user and repeat the SQL with that parent's email. A parent can also be linked to more than one child by inserting another mapping.
+
+SECURITY NOTES
+- Do not put the Supabase service-role key in config.js or browser code.
+- Do not enable public sign-ups for parents. Create accounts from the Supabase Dashboard.
+- The parent data functions return limited columns. Parents must be linked in parent_student_links to see a child.
+- Review progress notes and observations before entering them because those notes are visible to linked parents.
+- Test with a dedicated parent account before giving credentials to families.
+
+TEST
+1. Sign in as a linked parent.
+2. Confirm only the linked child appears.
+3. Confirm the photo, attendance and other sections load.
+4. Sign in as Admin/Teacher and confirm the staff dashboard remains available.

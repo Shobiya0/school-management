@@ -1,0 +1,34 @@
+DISHA PRESCHOOL - STUDENT PHOTO UPDATE
+
+WHAT CHANGED
+- Student photo upload in Add/Edit Student (JPG, PNG, WEBP; maximum 2 MB).
+- Photo preview before saving.
+- Private Supabase Storage upload.
+- Student directory photo thumbnails using temporary signed URLs.
+- Existing student, attendance, fee, login and other app code retained.
+
+BEFORE USING THE PHOTO FEATURE
+1. Supabase > Storage: confirm a PRIVATE bucket named student-photos.
+   File size limit: 2 MB.
+   Allowed MIME types: image/jpeg, image/png, image/webp.
+2. Supabase > SQL Editor: run this file:
+   supabase/student-photo-setup/001_student_photos.sql
+   It adds the photo_path column and Storage access policies.
+   It relies on the helper functions public.current_school_role() and
+   public.is_parent_of_student(uuid), which must already exist in your DB.
+3. Deploy the updated files from this ZIP to GitHub/Vercel.
+4. Sign in as Admin/Teacher, add a TEST student with a photo.
+5. Confirm the file appears in Supabase > Storage > student-photos and
+   the thumbnail appears in the Students directory.
+
+GITHUB UPLOAD
+- Download and extract this ZIP on your computer.
+- Open the extracted school-management-main folder.
+- In your GitHub repository, choose Add file > Upload files.
+- Upload the CONTENTS of the extracted folder (not the ZIP as one file).
+- Commit the changes. Vercel should deploy from the connected repository.
+
+SECURITY
+- Keep student-photos PRIVATE. Do not use public URLs.
+- Never add a Supabase service_role key to config.js or browser code.
+- Parent dashboard photo display is not part of this update.

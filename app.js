@@ -2,11 +2,11 @@ const SUPABASE_URL = window.DISHA_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = window.DISHA_SUPABASE_ANON_KEY || '';
 const $ = (s)=>document.querySelector(s);
 let client=null, profile=null, students=[], attendance=[];
-const labels={dashboard:['Dashboard','Your school at a glance'],students:['Students','Student records and Excel tools'],attendance:['Attendance','Daily class attendance'],fees:['Fees & payments','Track student payments'],operations:['School records','Additional school operations'],users:['Staff access','Manage authorized school accounts'],settings:['Settings & backup','Connection and data safety']};
+const labels={parentDashboard:['Parent dashboard','Your child’s school updates'],dashboard:['Dashboard','Your school at a glance'],students:['Students','Student records and Excel tools'],attendance:['Attendance','Daily class attendance'],fees:['Fees & payments','Track student payments'],operations:['School records','Additional school operations'],users:['Staff access','Manage authorized school accounts'],settings:['Settings & backup','Connection and data safety']};
 const onlineReady=()=>!!client;
 function msg(t){$('#syncStatus').textContent=t;}
 function esc(v=''){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function show(view){if(profile?.role!=='admin'&&['users'].includes(view))view='dashboard';document.querySelectorAll('.view').forEach(x=>x.hidden=x.id!==view);document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===view));$('#heading').textContent=labels[view][0];$('#subheading').textContent=labels[view][1];if(view==='students')renderStudents();if(view==='attendance')renderAttendance();if(view==='fees')loadFees();if(view==='dashboard')renderDashboard();}
+function show(view){if(profile?.role==='parent'&&view!=='parentDashboard')view='parentDashboard';if(profile?.role!=='parent'&&view==='parentDashboard')view='dashboard';if(profile?.role!=='admin'&&['users'].includes(view))view='dashboard';document.querySelectorAll('.view').forEach(x=>x.hidden=x.id!==view);document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===view));$('#heading').textContent=labels[view][0];$('#subheading').textContent=labels[view][1];if(view==='students')renderStudents();if(view==='attendance')renderAttendance();if(view==='fees')loadFees();if(view==='dashboard')renderDashboard();if(view==='parentDashboard')loadParentDashboard();}
 function localQueue(){return JSON.parse(localStorage.getItem('dishaPending')||'[]')}
 function queue(op,table,row){const q=localQueue();q.push({op,table,row,created_at:new Date().toISOString()});localStorage.setItem('dishaPending',JSON.stringify(q));msg('Saved on this device. It will sync when internet returns.');}
 async function syncQueue(){if(!client||!navigator.onLine)return;let q=localQueue(),left=[];for(const item of q){let {error}=item.op==='upsert'?await client.from(item.table).upsert(item.row,{onConflict:item.table==='students'?'admission_no':'student_id,attendance_date'}):await client.from(item.table).insert(item.row);if(error){left.push(item);console.error(error)}}localStorage.setItem('dishaPending',JSON.stringify(left));msg(left.length?`${left.length} item(s) still need syncing. Check connection or permissions.`:'All pending changes synced.');if(!left.length)await loadStudents();}
@@ -19,7 +19,55 @@ client.auth.onAuthStateChange((event, session)=>{
 });
 const {data:{session}}=await client.auth.getSession();
 if(session && !location.hash.includes('type=recovery')) await enterApp();}
-async function enterApp(){const {data:{session}}=await client.auth.getSession();const user=session?.user;if(!user)return;let data=null,error=null;if(navigator.onLine){({data,error}=await client.from('profiles').select('display_name,role').eq('id',user.id).single());if(!error)localStorage.setItem('dishaProfileCache',JSON.stringify({...data,email:user.email,id:user.id}));}else{data=JSON.parse(localStorage.getItem('dishaProfileCache')||'null');if(!data)error={message:'First sign-in and profile sync require internet.'};}if(error){$('#authMsg').textContent='Your account profile is unavailable. Connect to the internet or ask the school Admin to complete staff setup.';return;}profile={...data,email:user.email,id:user.id};$('#login').hidden=true;$('#app').hidden=false;$('#role').textContent=profile.role.toUpperCase();document.querySelectorAll('.admin-only').forEach(x=>x.hidden=profile.role!=='admin');await syncQueue();await loadStudents();show('dashboard');}
+async function enterApp(){const {data:{session}}=await client.auth.getSession();const user=session?.user;if(!user)return;let data=null,error=null;if(navigator.onLine){({data,error}=await client.from('profiles').select('display_name,role').eq('id',user.id).single());if(!error)localStorage.setItem('dishaProfileCache',JSON.stringify({...data,email:user.email,id:user.id}));}else{data=JSON.parse(localStorage.getItem('dishaProfileCache')||'null');if(!data)error={message:'First sign-in and profile sync require internet.'};}if(error){$('#authMsg').textContent='Your account profile is unavailable. Connect to the internet or ask the school Admin to complete staff setup.';return;}profile={...data,email:user.email,id:user.id};$('#login').hidden=true;$('#app').hidden=false;$('#role').textContent=profile.role.toUpperCase();document.querySelectorAll('.admin-only').forEach(x=>x.hidden=profile.role!=='admin');document.querySelectorAll('.staff-only').forEach(x=>x.hidden=profile.role==='parent');document.querySelectorAll('.parent-only').forEach(x=>x.hidden=profile.role!=='parent');if(profile.role==='parent'){show('parentDashboard');return;}await syncQueue();await loadStudents();show('dashboard');}
+// Parent portal: all child data is fetched through restricted SECURITY DEFINER RPCs.
+async function parentRpc(name, studentId){
+  const {data,error}=await client.rpc(name,{p_student_id:studentId});
+  if(error)throw error;
+  return data||[];
+}
+function parentRows(title, rows, fields, emptyText){
+  if(!rows.length)return `<section class="parent-card"><h3>${esc(title)}</h3><p class="muted">${esc(emptyText)}</p></section>`;
+  return `<section class="parent-card"><h3>${esc(title)}</h3><div class="parent-table-wrap"><table><thead><tr>${fields.map(f=>`<th>${esc(f.label)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${fields.map(f=>`<td>${esc(r[f.key]??'—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+}
+async function loadParentDashboard(){
+  const host=$('#parentChildren'),notice=$('#parentMessage');
+  host.innerHTML='<p class="muted">Loading your child’s records…</p>';notice.textContent='';
+  if(!navigator.onLine){host.innerHTML='<p class="notice">Connect to the internet to view the latest school information.</p>';return;}
+  try{
+    const {data:children,error}=await client.rpc('get_my_linked_children');
+    if(error)throw error;
+    if(!children?.length){host.innerHTML='<section class="parent-card"><h3>No child linked yet</h3><p>Please contact Disha Preschool Admin and ask them to link your parent login to your child’s admission record.</p></section>';return;}
+    const cards=await Promise.all(children.map(async child=>{
+      const [attendance,progress,observations,fees,daycare,timetable,photoPathRows]=await Promise.all([
+        parentRpc('get_my_child_attendance',child.student_id),
+        parentRpc('get_my_child_progress',child.student_id),
+        parentRpc('get_my_child_observations',child.student_id),
+        parentRpc('get_my_child_fees',child.student_id),
+        parentRpc('get_my_child_daycare',child.student_id),
+        parentRpc('get_my_child_timetable',child.student_id),
+        parentRpc('get_my_child_photo_path',child.student_id)
+      ]);
+      const photoUrl=await studentPhotoUrl(photoPathRows[0]?.photo_path);
+      const photo=photoUrl?`<img class="parent-child-photo" src="${esc(photoUrl)}" alt="${esc(child.full_name)}">`:'<div class="parent-child-placeholder">🧒</div>';
+      const details=[['Admission number',child.admission_no],['Class',child.class_name],['Date of birth',child.date_of_birth],['Status',child.status]].filter(x=>x[1]);
+      return `<article class="parent-child"><div class="parent-child-head">${photo}<div><h2>${esc(child.full_name)}</h2><p>${esc(child.class_name||'Class not set')} · ${esc(child.admission_no||'')}</p></div></div><div class="parent-details">${details.map(x=>`<div><small>${esc(x[0])}</small><b>${esc(x[1])}</b></div>`).join('')}</div>
+      ${parentRows('Attendance',attendance,[{key:'attendance_date',label:'Date'},{key:'status',label:'Status'}],'No attendance records available yet')}
+      ${parentRows('Child progress',progress,[{key:'recorded_on',label:'Date'},{key:'domain',label:'Learning area'},{key:'note',label:'Update'}],'No progress updates available yet')}
+      ${parentRows('Montessori observations',observations,[{key:'observed_on',label:'Date'},{key:'learning_area',label:'Learning area'},{key:'activity',label:'Activity'},{key:'observation',label:'Observation'},{key:'progress_level',label:'Progress'}],'No observations available yet')}
+      ${parentRows('Fee payments',fees,[{key:'payment_date',label:'Payment date'},{key:'fee_month',label:'Fee month'},{key:'amount',label:'Amount (₹)'},{key:'payment_mode',label:'Mode'}],'No payment records available yet')}
+      ${parentRows('Daycare',daycare,[{key:'record_date',label:'Date'},{key:'check_in',label:'Check-in'},{key:'check_out',label:'Check-out'}],'No daycare records available yet')}
+      ${parentRows('Class timetable',timetable,[{key:'weekday',label:'Day'},{key:'start_time',label:'From'},{key:'end_time',label:'To'},{key:'activity',label:'Activity'}],'No timetable published yet')}
+      </article>`;
+    }));
+    host.innerHTML=cards.join('');
+  }catch(error){
+    console.error('Parent dashboard error:',error);
+    host.innerHTML='<section class="parent-card"><h3>Could not load your child’s information</h3><p>Please check the parent access SQL setup and contact the school Admin if the issue continues.</p></section>';
+    notice.textContent=error.message||'Parent dashboard could not be loaded.';
+  }
+}
+
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!client){$('#authMsg').textContent='Complete Supabase setup first (see SETUP.md).';return;}const f=new FormData(e.target);$('#authMsg').textContent='Signing in…';const {error}=await client.auth.signInWithPassword({email:f.get('email'),password:f.get('password')});if(error){$('#authMsg').textContent=error.message;return;}await enterApp();});
 function showPasswordReset(message=''){
   $('#loginForm').hidden=true;
@@ -68,12 +116,71 @@ document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>show(b.dataset.view))
 async function loadStudents(){if(!client)return;if(!navigator.onLine){students=JSON.parse(localStorage.getItem('dishaStudentCache')||'[]');renderStudents();renderDashboard();return;}const {data,error}=await client.from('students').select('*').order('created_at',{ascending:false});if(error){students=JSON.parse(localStorage.getItem('dishaStudentCache')||'[]');msg('Could not refresh students: '+error.message);renderStudents();renderDashboard();return;}students=data||[];localStorage.setItem('dishaStudentCache',JSON.stringify(students));renderStudents();renderDashboard();}
 function renderDashboard(){const active=students.filter(s=>s.status==='Active').length;$('#stats').innerHTML=[['🧒','Total students',students.length],['🌟','Active students',active],['📥','Offline items waiting',localQueue().length]].map(x=>`<div class="stat"><small>${x[0]} ${x[1]}</small><strong>${x[2]}</strong></div>`).join('');$('#recent').innerHTML=students.slice(0,6).length?table(students.slice(0,6),['admission_no','full_name','class_name','guardian_name','status']):'<p class="muted">No student records yet. Add a student or import an Excel file.</p>';}
 function table(rows,cols){if(!rows.length)return '<p class="muted">No records found.</p>';return `<table><thead><tr>${cols.map(c=>`<th>${esc(c.replaceAll('_',' '))}</th>`).join('')}<th>Action</th></tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c]??'')}</td>`).join('')}<td><button class="soft" data-edit="${esc(r.id)}">Edit</button></td></tr>`).join('')}</tbody></table>`;}
-function renderStudents(){const q=($('#search')?.value||'').toLowerCase(),cl=$('#classFilter')?.value||'';const rows=students.filter(s=>(!cl||s.class_name===cl)&&[s.full_name,s.admission_no,s.guardian_name,s.guardian_phone].some(v=>String(v||'').toLowerCase().includes(q)));$('#studentTable').innerHTML=table(rows,['admission_no','full_name','class_name','guardian_name','guardian_phone','status']);document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editStudent(b.dataset.edit));}
+async function studentPhotoUrl(path){
+  if(!path||!client||!navigator.onLine)return '';
+  const {data,error}=await client.storage.from('student-photos').createSignedUrl(path,3600);
+  if(error){console.warn('Could not create student photo URL:',error.message);return '';}
+  return data?.signedUrl||'';
+}
+async function renderStudents(){
+  const q=($('#search')?.value||'').toLowerCase(),cl=$('#classFilter')?.value||'';
+  const rows=students.filter(s=>(!cl||s.class_name===cl)&&[s.full_name,s.admission_no,s.guardian_name,s.guardian_phone].some(v=>String(v||'').toLowerCase().includes(q)));
+  if(!rows.length){$('#studentTable').innerHTML='<p class="muted">No records found.</p>';return;}
+  const photoUrls=await Promise.all(rows.map(s=>studentPhotoUrl(s.photo_path)));
+  $('#studentTable').innerHTML=`<table><thead><tr><th>Photo</th><th>Admission no.</th><th>Student</th><th>Class</th><th>Parent</th><th>Phone</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${photoUrls[i]?`<img class="student-thumb" src="${esc(photoUrls[i])}" alt="${esc(r.full_name)}">`:'<span class="photo-placeholder">👧</span>'}</td><td>${esc(r.admission_no)}</td><td>${esc(r.full_name)}</td><td>${esc(r.class_name)}</td><td>${esc(r.guardian_name)}</td><td>${esc(r.guardian_phone)}</td><td>${esc(r.status)}</td><td><button class="soft" data-edit="${esc(r.id)}">Edit</button></td></tr>`).join('')}</tbody></table>`;
+  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editStudent(b.dataset.edit));
+}
 $('#search').oninput=renderStudents;$('#classFilter').onchange=renderStudents;
-function openStudent(s={}){const f=$('#studentForm');f.reset();for(const [k,v] of Object.entries(s))if(f.elements[k])f.elements[k].value=v??'';$('#modalTitle').textContent=s.id?'Edit student':'Add student';$('#modal').hidden=false;}
-$('#addStudent').onclick=()=>openStudent();$('#closeModal').onclick=$('#cancelModal').onclick=()=>$('#modal').hidden=true;
+async function openStudent(s={}){
+  const f=$('#studentForm');f.reset();
+  for(const [k,v] of Object.entries(s))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';
+  const preview=$('#studentPhotoPreview');preview.hidden=true;preview.removeAttribute('src');
+  if(s.photo_path){const url=await studentPhotoUrl(s.photo_path);if(url){preview.src=url;preview.hidden=false;}}
+  $('#modalTitle').textContent=s.id?'Edit student':'Add student';$('#modal').hidden=false;
+}
+$('#studentPhoto').onchange=e=>{
+  const file=e.target.files?.[0],preview=$('#studentPhotoPreview');
+  if(!file){preview.hidden=true;preview.removeAttribute('src');return;}
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)){alert('Choose a JPG, PNG or WEBP image.');e.target.value='';preview.hidden=true;return;}
+  if(file.size>2*1024*1024){alert('Photo must be 2 MB or smaller.');e.target.value='';preview.hidden=true;return;}
+  if(preview.dataset.objectUrl)URL.revokeObjectURL(preview.dataset.objectUrl);
+  preview.dataset.objectUrl=URL.createObjectURL(file);preview.src=preview.dataset.objectUrl;preview.hidden=false;
+};
+$('#addStudent').onclick=()=>openStudent();$('#closeModal').onclick=$('#cancelModal').onclick=()=>{$('#modal').hidden=true;$('#studentPhoto').value='';};
 function editStudent(id){const s=students.find(x=>x.id===id);if(s)openStudent(s);}
-$('#studentForm').onsubmit=async e=>{e.preventDefault();const row=Object.fromEntries(new FormData(e.target));row.monthly_fee=Number(row.monthly_fee||0);row.updated_at=new Date().toISOString();const isNew=!row.id;if(isNew){delete row.id;row.created_by=profile.id;}if(!navigator.onLine){queue('upsert','students',row);if(isNew)students.unshift({...row,id:'offline-'+Date.now()});renderStudents();$('#modal').hidden=true;return;}const {data,error}=await client.from('students').upsert(row,{onConflict:'admission_no'}).select().single();if(error){msg(error.message);return;}$('#modal').hidden=true;await loadStudents();};
+$('#studentForm').onsubmit=async e=>{
+  e.preventDefault();
+  const photo=$('#studentPhoto').files?.[0]||null;
+  const row=Object.fromEntries(new FormData(e.target));
+  delete row.studentPhoto;
+  row.monthly_fee=Number(row.monthly_fee||0);row.updated_at=new Date().toISOString();
+  const isNew=!row.id,oldStudent=students.find(s=>s.id===row.id);
+  if(oldStudent?.photo_path)row.photo_path=oldStudent.photo_path;
+  if(isNew){delete row.id;row.created_by=profile.id;}
+  if(!navigator.onLine){
+    if(photo){alert('Connect to the internet before saving a student photo.');return;}
+    queue('upsert','students',row);if(isNew)students.unshift({...row,id:'offline-'+Date.now()});
+    renderStudents();$('#modal').hidden=true;return;
+  }
+  const saveButton=e.currentTarget.querySelector('button[type=submit],button:not([type])');
+  if(saveButton){saveButton.disabled=true;saveButton.textContent='Saving…';}
+  try{
+    const {data,error}=await client.from('students').upsert(row,{onConflict:'admission_no'}).select().single();
+    if(error)throw error;
+    if(photo){
+      const extension=photo.type==='image/jpeg'?'jpg':photo.type.split('/')[1];
+      const path=`${data.id}/${Date.now()}.${extension}`;
+      const {error:uploadError}=await client.storage.from('student-photos').upload(path,photo,{contentType:photo.type,upsert:false});
+      if(uploadError){msg('Student saved, but photo upload failed: '+uploadError.message);}
+      else{
+        const {error:updateError}=await client.from('students').update({photo_path:path}).eq('id',data.id);
+        if(updateError)msg('Photo uploaded, but its student record was not updated: '+updateError.message);
+      }
+    }
+    $('#modal').hidden=true;$('#studentPhoto').value='';await loadStudents();
+  }catch(error){msg(error.message||'Could not save student.');}
+  finally{if(saveButton){saveButton.disabled=false;saveButton.textContent='Save student';}}
+};
 function workbook(rows,name){if(!window.XLSX){alert('Excel library is not loaded. Connect to the internet and refresh.');return;}const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Students');XLSX.writeFile(wb,name);}
 const templateHeaders=['admission_no','full_name','date_of_birth','class_name','gender','date_of_joining','guardian_name','guardian_phone','alternate_phone','guardian_email','address','care_notes','monthly_fee','status'];
 $('#template').onclick=()=>workbook([Object.fromEntries(templateHeaders.map(h=>[h,'']))],'disha-student-import-template.xlsx');
