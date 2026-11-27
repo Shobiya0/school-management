@@ -102,3 +102,23 @@ older reset links may have expired or already been used.
 When the reset link opens the app, the app listens for Supabase's
 `PASSWORD_RECOVERY` event, displays the new-password form, checks that both
 password entries match, and saves the password with Supabase Auth.
+
+
+## Daily child records, weekly parent reports and timetable editor (update 4)
+
+1. Open Supabase → SQL Editor.
+2. Open `supabase/migrations/004_daily_records_weekly_reports_timetable.sql` from this project.
+3. Copy the complete SQL into the SQL Editor and run it once.
+4. Refresh the deployed school app and sign in as Admin or Teacher.
+5. Open **Daily child records** to save a date-wise record for each child. The record includes learning topics, activities, participation, behaviour, food/snacks and teacher notes. A record can be edited by selecting the same child and date again.
+6. For a clearly labelled test run, click **Generate demo records for all students**. It creates Monday–Friday demo records for active enrolled students and saves weekly report snapshots marked **DEMO / TEST DATA**. It keeps existing child/date records unchanged.
+7. Open **Timetable** to create, edit or delete periods for Playgroup, Nursery, Junior KG and Senior KG. The optional suggested timetable button creates a 9:00 AM–4:00 PM weekday structure for classes that do not already have timetable rows. Breaks, assembly, lunch and dispersal are editable entries.
+8. Parents see the timetable for their linked child and weekly reports in the parent dashboard. On Friday, the parent dashboard asks the secure weekly-report RPC to create that week's snapshot and displays a report-ready popup. Earlier reports remain available under Weekly reports.
+
+### Important data notes
+- Demo records are explicitly marked as demo/test data. Do not use them as actual school observations.
+- The demo generator is optional and only runs when a staff member clicks its button.
+- Actual enrolled children are selected from the existing `students` table; this ZIP does not include a real student roster.
+- Existing attendance, child_progress, montessori_observations, parent links and parent dashboard RPCs are retained. The update adds only `daily_child_records` and `weekly_reports`, plus access policies and one parent report RPC.
+- Parent access is limited to children linked through `parent_student_links`. Parents cannot create or edit daily records or timetables.
+- Weekly report generation is triggered when a parent opens the dashboard on Friday. For a demo/test report immediately, use the staff-side demo generator.
