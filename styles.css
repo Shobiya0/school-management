@@ -28,3 +28,19 @@
 .weekly-report summary{cursor:pointer;font-weight:700}
 .weekly-report ul{padding-left:20px}.weekly-report li{margin:7px 0}
 #dailyTable table,#timetableTable table{min-width:760px}
+
+/* Update 5: multi-day entry, class timetable editor and stock register */
+.daily-date-tools{border:1px solid var(--line);background:#fbfaff;border-radius:14px;padding:14px;margin:14px 0}
+.daily-date-tools .toolbar{align-items:end;flex-wrap:wrap;max-width:none}
+.date-button-list{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.date-button-list button{display:flex;flex-direction:column;align-items:center;min-width:105px}
+.date-button-list small{font-size:10px;opacity:.75}
+.timetable-day-card{border:1px solid var(--line);border-radius:14px;padding:12px;margin:12px 0;background:#fff}
+.timetable-day-card h3{margin:2px 0 8px;color:var(--purple)}
+.timetable-day-card table{min-width:560px}
+.class-assignment-checks{display:flex;gap:10px;flex-wrap:wrap;padding:10px 0}
+.class-assignment-checks label{display:flex;flex-direction:row;align-items:center;gap:7px;background:#f8f7ff;border:1px solid var(--line);padding:10px 12px;border-radius:10px;margin:0}
+.class-assignment-checks input{width:auto}
+#inventoryStats{grid-template-columns:repeat(4,minmax(0,1fr));margin:14px 0}
+@media(max-width:850px){#inventoryStats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.daily-date-tools .toolbar{display:grid;grid-template-columns:1fr}.date-button-list button{flex:1 1 42%}}

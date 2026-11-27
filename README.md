@@ -2,7 +2,7 @@
 
 Single-school Vercel + Supabase project. Start with `SETUP.md`.
 
-**This package is a foundation release:** secure Supabase login/role policies, student records, Excel import/export, attendance, fees, PWA shell and limited offline write queue are included. Several operational modules remain planned and are not yet fully implemented. Configure Supabase and complete the test checklist before real school use.
+**This package is a school-management foundation:** secure Supabase login/role policies, student records, Excel import/export, attendance, daily child records, editable timetables, inventory, fee summaries, parent portal, PWA shell and a limited offline write queue are included. Admissions, Montessori observations, Child Progress and Daycare still need complete staff workflows. Configure Supabase and complete the test checklist before real school use.
 
 
 ## Student photo upload (added in this package)
@@ -26,3 +26,7 @@ See `STAFF-PHOTO-AND-SCHOOL-RECORDS-SETUP.txt`. Run `supabase/staff-photo-setup/
 
 
 Latest update: see `SETUP.md` for the daily child records, weekly parent reports, and editable class timetable setup. Run the new migration `supabase/migrations/004_daily_records_weekly_reports_timetable.sql` before using these modules.
+
+## Update 5
+
+This release adds teacher class assignments enforced by Supabase RLS, multi-day backdated record navigation, grouped timetable editing, a live inventory register, fee balance summaries and automatic refresh of saved weekly reports. Run `supabase/migrations/005_access_inventory_fees_reports.sql` after migration 004 before deploying the updated app. See the Update 5 section in `SETUP.md` for the required Admin class-assignment and test steps.

@@ -1,0 +1,20 @@
+DISHA PRESCHOOL – UPDATE 5 QUICK START
+
+IMPORTANT: Run the SQL migration before deploying the updated website.
+
+1. Supabase → SQL Editor.
+2. Open and run: supabase/migrations/005_access_inventory_fees_reports.sql
+   Run it after migration 004_daily_records_weekly_reports_timetable.sql.
+3. Wait for Supabase to show Success.
+4. Deploy the complete contents of this ZIP to the existing Vercel project. Keep config.js and its existing Supabase URL/public anon key settings unchanged.
+5. Sign in as Admin → Staff access → Teacher class access.
+6. Assign each teacher to the correct class(es), then save.
+7. Test a teacher login. It should show only students in the assigned class(es). A teacher with no assigned class will see no students until Admin assigns one.
+8. Daily child records: select a child, set the start date, select 5 days, click Show dates, enter each day and save. The next date is selected automatically.
+9. Timetable: edit periods in the Timetable section. Admin manages all classes; teachers manage assigned classes. Parents can tap Refresh school updates to reload the latest timetable.
+10. Inventory: add/edit items and enter available quantity, pending/ordered quantity and reorder level.
+11. Fees: Admin sees all students' monthly fee, current-month payments and estimated current-month balance. Parents see only their linked child's fee summary and payment history.
+
+Do not skip the SQL migration. The website changes depend on the new database table, policies and RPC functions.
+
+This package has passed JavaScript syntax and static HTML checks. It has not been run against the live Supabase database or deployed to Vercel in this session. Test with one Admin, one assigned Teacher and one Parent account before school-wide use.

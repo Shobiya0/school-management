@@ -2,12 +2,12 @@ const SUPABASE_URL = window.DISHA_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = window.DISHA_SUPABASE_ANON_KEY || '';
 const $ = (s)=>document.querySelector(s);
 let client=null, profile=null, students=[], attendance=[], staffMembers=[];
-const labels={parentDashboard:['Parent dashboard','Your child’s school updates'],dashboard:['Dashboard','Your school at a glance'],students:['Students','Student records and Excel tools'],attendance:['Attendance','Daily class attendance'],dailyRecords:['Daily child records','Individual daily learning and care notes'],timetableManage:['Class timetable','Edit schedules for all classes'],fees:['Fees & payments','Track student payments'],operations:['School records','Additional school operations'],users:['Staff access','Manage authorized school accounts'],settings:['Settings & backup','Connection and data safety']};
+const labels={parentDashboard:['Parent dashboard','Your child’s school updates'],dashboard:['Dashboard','Your school at a glance'],students:['Students','Student records and Excel tools'],attendance:['Attendance','Daily class attendance'],dailyRecords:['Daily child records','Individual daily learning and care notes'],timetableManage:['Class timetable','Edit schedules for all classes'],fees:['Fees & payments','Track student payments and outstanding balances'],inventory:['Inventory','Available stock, pending orders and reorder levels'],operations:['School records','Additional school operations'],users:['Staff access','Manage authorized school accounts and class assignments'],settings:['Settings & backup','Connection and data safety']};
 const onlineReady=()=>!!client;
 const localDateString=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 function msg(t){$('#syncStatus').textContent=t;}
 function esc(v=''){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function show(view){if(profile?.role==='parent'&&view!=='parentDashboard')view='parentDashboard';if(profile?.role!=='parent'&&view==='parentDashboard')view='dashboard';if(profile?.role!=='admin'&&['users'].includes(view))view='dashboard';document.querySelectorAll('.view').forEach(x=>x.hidden=x.id!==view);document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===view));$('#heading').textContent=labels[view][0];$('#subheading').textContent=labels[view][1];if(view==='students')renderStudents();if(view==='attendance')renderAttendance();if(view==='dailyRecords')loadDailyRecords();if(view==='timetableManage')loadTimetable();if(view==='fees')loadFees();if(view==='dashboard')renderDashboard();if(view==='parentDashboard')loadParentDashboard();if(view==='users')loadStaffDirectory();}
+function show(view){if(profile?.role==='parent'&&view!=='parentDashboard')view='parentDashboard';if(profile?.role!=='parent'&&view==='parentDashboard')view='dashboard';if(profile?.role!=='admin'&&['users','fees','operations'].includes(view))view='dashboard';if(!labels[view])view='dashboard';document.querySelectorAll('.view').forEach(x=>x.hidden=x.id!==view);document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===view));$('#heading').textContent=labels[view][0];$('#subheading').textContent=labels[view][1];if(view==='students')renderStudents();if(view==='attendance')renderAttendance();if(view==='dailyRecords')loadDailyRecords();if(view==='timetableManage')loadTimetable();if(view==='fees')loadFees();if(view==='inventory')loadInventory();if(view==='dashboard')renderDashboard();if(view==='parentDashboard')loadParentDashboard();if(view==='users')loadStaffDirectory();}
 function localQueue(){return JSON.parse(localStorage.getItem('dishaPending')||'[]')}
 function queue(op,table,row){const q=localQueue();q.push({op,table,row,created_at:new Date().toISOString()});localStorage.setItem('dishaPending',JSON.stringify(q));msg('Saved on this device. It will sync when internet returns.');}
 async function syncQueue(){if(!client||!navigator.onLine)return;let q=localQueue(),left=[];for(const item of q){let {error}=item.op==='upsert'?await client.from(item.table).upsert(item.row,{onConflict:item.table==='students'?'admission_no':'student_id,attendance_date'}):await client.from(item.table).insert(item.row);if(error){left.push(item);console.error(error)}}localStorage.setItem('dishaPending',JSON.stringify(left));msg(left.length?`${left.length} item(s) still need syncing. Check connection or permissions.`:'All pending changes synced.');if(!left.length)await loadStudents();}
@@ -39,8 +39,8 @@ function renderWeeklyReports(reports=[]){
   const data=latest.report_data||{};
   const demo=latest.is_demo?' · DEMO / TEST DATA':'';
   const daily=Array.isArray(data.daily_records)?data.daily_records:[];
-  const content=daily.map(d=>`<li><b>${esc(d.date||'')}</b> — ${esc(d.learning_topics||'')}${d.activities?' · '+esc(d.activities):''}${d.teacher_notes?' · Note: '+esc(d.teacher_notes):''}</li>`).join('');
-  return `<section class="parent-card weekly-report"><h3>📬 Weekly reports</h3>${isCurrent?'<p class="notice"><b>🎉 This week’s report is ready!</b> Open it below.</p>':''}<p><b>${esc(latest.week_start)} to ${esc(latest.week_end)}</b>${esc(demo)}</p><details ${isCurrent?'open':''}><summary>View weekly report</summary><p><b>Attendance</b></p><ul>${(data.attendance||[]).map(a=>`<li>${esc(a.date||'')} — ${esc(a.status||'')}</li>`).join('')||'<li>No attendance records for this week.</li>'}</ul><p><b>Daily learning & activities</b></p><ul>${content||'<li>No daily notes were saved for this week.</li>'}</ul><p><b>Learning progress</b></p><ul>${(data.progress||[]).map(p=>`<li>${esc(p.date||'')} — ${esc(p.domain||'')}: ${esc(p.note||'')}</li>`).join('')||'<li>No progress updates this week.</li>'}</ul><p><b>Montessori observations</b></p><ul>${(data.observations||[]).map(o=>`<li>${esc(o.date||'')} — ${esc(o.area||'')}: ${esc(o.activity||'')} · ${esc(o.observation||'')} (${esc(o.level||'')})</li>`).join('')||'<li>No Montessori observations this week.</li>'}</ul></details>${reports.length>1?`<details><summary>Previous reports (${reports.length-1})</summary>${reports.slice(1).map(r=>{const d=r.report_data||{};return `<details><summary>${esc(r.week_start)} to ${esc(r.week_end)}${r.is_demo?' · DEMO':''}</summary><p><b>Attendance:</b> ${(d.attendance||[]).length} record(s)</p><ul>${(d.daily_records||[]).map(x=>`<li>${esc(x.date||'')} — ${esc(x.learning_topics||'')}${x.activities?' · '+esc(x.activities):''}${x.teacher_notes?' · '+esc(x.teacher_notes):''}</li>`).join('')||'<li>No daily notes.</li>'}</ul><p><b>Progress:</b> ${(d.progress||[]).length} update(s) · <b>Observations:</b> ${(d.observations||[]).length}</p></details>`;}).join('')}</details>`:''}</section>`;
+  const content=daily.map(d=>`<li><b>${esc(d.date||'')}</b> — ${esc(d.learning_topics||'')}${d.activities?' · Activities: '+esc(d.activities):''}${d.participation?' · Participation: '+esc(d.participation):''}${d.behaviour?' · Behaviour: '+esc(d.behaviour):''}${d.food_snacks?' · Food/snacks: '+esc(d.food_snacks):''}${d.teacher_notes?' · Teacher note: '+esc(d.teacher_notes):''}</li>`).join('');
+  return `<section class="parent-card weekly-report"><h3>📬 Weekly reports</h3>${isCurrent?'<p class="notice"><b>🎉 This week’s report is ready!</b> Open it below.</p>':''}<p><b>${esc(latest.week_start)} to ${esc(latest.week_end)}</b>${esc(demo)}</p><details ${isCurrent?'open':''}><summary>View weekly report</summary><p><b>Attendance</b></p><ul>${(data.attendance||[]).map(a=>`<li>${esc(a.date||'')} — ${esc(a.status||'')}</li>`).join('')||'<li>No attendance records for this week.</li>'}</ul><p><b>Daily learning & activities</b></p><ul>${content||'<li>No daily notes were saved for this week.</li>'}</ul><p><b>Learning progress</b></p><ul>${(data.progress||[]).map(p=>`<li>${esc(p.date||'')} — ${esc(p.domain||'')}: ${esc(p.note||'')}</li>`).join('')||'<li>No progress updates this week.</li>'}</ul><p><b>Montessori observations</b></p><ul>${(data.observations||[]).map(o=>`<li>${esc(o.date||'')} — ${esc(o.area||'')}: ${esc(o.activity||'')} · ${esc(o.observation||'')} (${esc(o.level||'')})</li>`).join('')||'<li>No Montessori observations this week.</li>'}</ul></details>${reports.length>1?`<details><summary>Previous reports (${reports.length-1})</summary>${reports.slice(1).map(r=>{const d=r.report_data||{};return `<details><summary>${esc(r.week_start)} to ${esc(r.week_end)}${r.is_demo?' · DEMO':''}</summary><p><b>Attendance:</b> ${(d.attendance||[]).length} record(s)</p><ul>${(d.daily_records||[]).map(x=>`<li>${esc(x.date||'')} — ${esc(x.learning_topics||'')}${x.activities?' · Activities: '+esc(x.activities):''}${x.participation?' · Participation: '+esc(x.participation):''}${x.behaviour?' · Behaviour: '+esc(x.behaviour):''}${x.food_snacks?' · Food/snacks: '+esc(x.food_snacks):''}${x.teacher_notes?' · Teacher note: '+esc(x.teacher_notes):''}</li>`).join('')||'<li>No daily notes.</li>'}</ul><p><b>Progress:</b> ${(d.progress||[]).length} update(s) · <b>Observations:</b> ${(d.observations||[]).length}</p></details>`;}).join('')}</details>`:''}</section>`;
 }
 
 function weeklyReportReadyInMarkup(host){
@@ -55,6 +55,7 @@ function showWeeklyPopup(){
   $('#openWeeklyReport').onclick=()=>{modal.remove();document.querySelector('.weekly-report')?.scrollIntoView({behavior:'smooth',block:'center'});};
 }
 
+$('#refreshParentDashboard').onclick=loadParentDashboard;
 async function loadParentDashboard(){
   const host=$('#parentChildren'),notice=$('#parentMessage');
   host.innerHTML='<p class="muted">Loading your child’s records…</p>';notice.textContent='';
@@ -64,26 +65,29 @@ async function loadParentDashboard(){
     if(error)throw error;
     if(!children?.length){host.innerHTML='<section class="parent-card"><h3>No child linked yet</h3><p>Please contact Disha Preschool Admin and ask them to link your parent login to your child’s admission record.</p></section>';return;}
     const cards=await Promise.all(children.map(async child=>{
-      const [attendance,progress,observations,fees,daycare,timetable,photoPathRows,weeklyReports]=await Promise.all([
+      const [attendance,progress,observations,fees,feeSummary,daycare,timetable,photoPathRows,weeklyReports]=await Promise.all([
         parentRpc('get_my_child_attendance',child.student_id),
         parentRpc('get_my_child_progress',child.student_id),
         parentRpc('get_my_child_observations',child.student_id),
         parentRpc('get_my_child_fees',child.student_id),
+        parentRpc('get_my_child_fee_summary',child.student_id),
         parentRpc('get_my_child_daycare',child.student_id),
         parentRpc('get_my_child_timetable',child.student_id),
         parentRpc('get_my_child_photo_path',child.student_id),
         parentRpc('get_my_child_weekly_reports',child.student_id)
       ]);
       const photoUrl=await studentPhotoUrl(photoPathRows[0]?.photo_path);
+      const timetableDisplay=timetable.map(t=>({...t,start_time:String(t.start_time||'').slice(0,5),end_time:String(t.end_time||'').slice(0,5)}));
       const photo=photoUrl?`<img class="parent-child-photo" src="${esc(photoUrl)}" alt="${esc(child.full_name)}">`:'<div class="parent-child-placeholder">🧒</div>';
       const details=[['Admission number',child.admission_no],['Class',child.class_name],['Date of birth',child.date_of_birth],['Status',child.status]].filter(x=>x[1]);
       return `<article class="parent-child"><div class="parent-child-head">${photo}<div><h2>${esc(child.full_name)}</h2><p>${esc(child.class_name||'Class not set')} · ${esc(child.admission_no||'')}</p></div></div><div class="parent-details">${details.map(x=>`<div><small>${esc(x[0])}</small><b>${esc(x[1])}</b></div>`).join('')}</div>
       ${parentRows('Attendance',attendance,[{key:'attendance_date',label:'Date'},{key:'status',label:'Status'}],'No attendance records available yet')}
       ${parentRows('Child progress',progress,[{key:'recorded_on',label:'Date'},{key:'domain',label:'Learning area'},{key:'note',label:'Update'}],'No progress updates available yet')}
       ${parentRows('Montessori observations',observations,[{key:'observed_on',label:'Date'},{key:'learning_area',label:'Learning area'},{key:'activity',label:'Activity'},{key:'observation',label:'Observation'},{key:'progress_level',label:'Progress'}],'No observations available yet')}
-      ${parentRows('Fee payments',fees,[{key:'payment_date',label:'Payment date'},{key:'fee_month',label:'Fee month'},{key:'amount',label:'Amount (₹)'},{key:'payment_mode',label:'Mode'}],'No payment records available yet')}
+      ${parentRows('Monthly fee & outstanding balance',feeSummary,[{key:'fee_month',label:'Fee month'},{key:'monthly_fee',label:'Monthly fee (₹)'},{key:'amount_paid',label:'Paid (₹)'},{key:'balance_due',label:'Balance due (₹)'}],'Fee summary is not available yet')}
+      ${parentRows('Fee payment history',fees,[{key:'payment_date',label:'Payment date'},{key:'fee_month',label:'Fee month'},{key:'amount',label:'Amount (₹)'},{key:'payment_mode',label:'Mode'}],'No payment records available yet')}
       ${parentRows('Daycare',daycare,[{key:'record_date',label:'Date'},{key:'check_in',label:'Check-in'},{key:'check_out',label:'Check-out'}],'No daycare records available yet')}
-      ${parentRows('Class timetable',timetable,[{key:'weekday',label:'Day'},{key:'start_time',label:'From'},{key:'end_time',label:'To'},{key:'activity',label:'Activity'}],'No timetable published yet')}
+      ${parentRows('Class timetable',timetableDisplay,[{key:'weekday',label:'Day'},{key:'start_time',label:'From'},{key:'end_time',label:'To'},{key:'activity',label:'Activity'}],'No timetable published yet')}
       ${renderWeeklyReports(weeklyReports)}
       </article>`;
     }));
@@ -144,9 +148,9 @@ $('#resetPasswordForm').addEventListener('submit',async e=>{
 $('#logout').onclick=async()=>{await client?.auth.signOut();profile=null;$('#app').hidden=true;$('#login').hidden=false;};
 $('#changePassword').onclick=async()=>{if(!client)return;const p=prompt('Enter a new password (minimum 8 characters):');if(!p)return;if(p.length<8){alert('Use at least 8 characters.');return;}const {error}=await client.auth.updateUser({password:p});alert(error?error.message:'Password updated.');};
 document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>show(b.dataset.view));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));
-async function loadStudents(){if(!client)return;if(!navigator.onLine){students=JSON.parse(localStorage.getItem('dishaStudentCache')||'[]');renderStudents();renderDashboard();return;}const {data,error}=await client.from('students').select('*').order('created_at',{ascending:false});if(error){students=JSON.parse(localStorage.getItem('dishaStudentCache')||'[]');msg('Could not refresh students: '+error.message);renderStudents();renderDashboard();return;}students=data||[];localStorage.setItem('dishaStudentCache',JSON.stringify(students));renderStudents();renderDashboard();}
+async function loadStudents(){if(!client)return;if(!navigator.onLine){students=profile?.role==='admin'?JSON.parse(localStorage.getItem('dishaStudentCache')||'[]'):[];renderStudents();renderDashboard();return;}const {data,error}=await client.from('students').select('*').order('created_at',{ascending:false});if(error){students=profile?.role==='admin'?JSON.parse(localStorage.getItem('dishaStudentCache')||'[]'):[];msg('Could not refresh students: '+error.message);renderStudents();renderDashboard();return;}students=data||[];if(profile?.role==='admin')localStorage.setItem('dishaStudentCache',JSON.stringify(students));renderStudents();renderDashboard();}
 function renderDashboard(){const active=students.filter(s=>s.status==='Active').length;$('#stats').innerHTML=[['🧒','Total students',students.length],['🌟','Active students',active],['📥','Offline items waiting',localQueue().length]].map(x=>`<div class="stat"><small>${x[0]} ${x[1]}</small><strong>${x[2]}</strong></div>`).join('');$('#recent').innerHTML=students.slice(0,6).length?table(students.slice(0,6),['admission_no','full_name','class_name','guardian_name','status']):'<p class="muted">No student records yet. Add a student or import an Excel file.</p>';}
-function table(rows,cols){if(!rows.length)return '<p class="muted">No records found.</p>';return `<table><thead><tr>${cols.map(c=>`<th>${esc(c.replaceAll('_',' '))}</th>`).join('')}<th>Action</th></tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c]??'')}</td>`).join('')}<td><button class="soft" data-edit="${esc(r.id)}">Edit</button></td></tr>`).join('')}</tbody></table>`;}
+function table(rows,cols){if(!rows.length)return '<p class="muted">No records found.</p>';return `<table><thead><tr>${cols.map(c=>`<th>${esc(c.replaceAll('_',' '))}</th>`).join('')}${profile?.role==='admin'?'<th>Action</th>':''}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${esc(r[c]??'')}</td>`).join('')}${profile?.role==='admin'?`<td><button class="soft" data-edit="${esc(r.id)}">Edit</button></td>`:''}</tr>`).join('')}</tbody></table>`;}
 async function studentPhotoUrl(path){
   if(!path||!client||!navigator.onLine)return '';
   const {data,error}=await client.storage.from('student-photos').createSignedUrl(path,3600);
@@ -156,10 +160,10 @@ async function studentPhotoUrl(path){
 async function renderStudents(){
   const q=($('#search')?.value||'').toLowerCase(),cl=$('#classFilter')?.value||'';
   const rows=students.filter(s=>(!cl||s.class_name===cl)&&[s.full_name,s.admission_no,s.guardian_name,s.guardian_phone].some(v=>String(v||'').toLowerCase().includes(q)));
-  if(!rows.length){$('#studentTable').innerHTML='<p class="muted">No records found.</p>';return;}
+  if(!rows.length){$('#studentTable').innerHTML=profile?.role==='teacher'?'<p class="notice">No students are assigned to your teacher login yet. Please ask the Admin to assign your class under Staff access.</p>':'<p class="muted">No records found.</p>';return;}
   const photoUrls=await Promise.all(rows.map(s=>studentPhotoUrl(s.photo_path)));
-  $('#studentTable').innerHTML=`<table><thead><tr><th>Photo</th><th>Admission no.</th><th>Student</th><th>Class</th><th>Parent</th><th>Phone</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${photoUrls[i]?`<img class="student-thumb" src="${esc(photoUrls[i])}" alt="${esc(r.full_name)}">`:'<span class="photo-placeholder">👧</span>'}</td><td>${esc(r.admission_no)}</td><td>${esc(r.full_name)}</td><td>${esc(r.class_name)}</td><td>${esc(r.guardian_name)}</td><td>${esc(r.guardian_phone)}</td><td>${esc(r.status)}</td><td><button class="soft" data-edit="${esc(r.id)}">Edit</button></td></tr>`).join('')}</tbody></table>`;
-  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editStudent(b.dataset.edit));
+  $('#studentTable').innerHTML=`<table><thead><tr><th>Photo</th><th>Admission no.</th><th>Student</th><th>Class</th><th>Parent</th><th>Phone</th><th>Status</th>${profile?.role==='admin'?'<th>Action</th>':''}</tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${photoUrls[i]?`<img class="student-thumb" src="${esc(photoUrls[i])}" alt="${esc(r.full_name)}">`:'<span class="photo-placeholder">👧</span>'}</td><td>${esc(r.admission_no)}</td><td>${esc(r.full_name)}</td><td>${esc(r.class_name)}</td><td>${esc(r.guardian_name)}</td><td>${esc(r.guardian_phone)}</td><td>${esc(r.status)}</td>${profile?.role==='admin'?`<td><button class="soft" data-edit="${esc(r.id)}">Edit</button></td>`:''}</tr>`).join('')}</tbody></table>`;
+  if(profile?.role==='admin')document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editStudent(b.dataset.edit));
 }
 $('#search').oninput=renderStudents;$('#classFilter').onchange=renderStudents;
 async function openStudent(s={}){
@@ -178,7 +182,7 @@ $('#studentPhoto').onchange=e=>{
   preview.dataset.objectUrl=URL.createObjectURL(file);preview.src=preview.dataset.objectUrl;preview.hidden=false;
 };
 $('#addStudent').onclick=()=>openStudent();$('#closeModal').onclick=$('#cancelModal').onclick=()=>{$('#modal').hidden=true;$('#studentPhoto').value='';};
-function editStudent(id){const s=students.find(x=>x.id===id);if(s)openStudent(s);}
+function editStudent(id){if(profile?.role!=='admin')return;const s=students.find(x=>x.id===id);if(s)openStudent(s);}
 $('#studentForm').onsubmit=async e=>{
   e.preventDefault();
   const photo=$('#studentPhoto').files?.[0]||null;
@@ -219,8 +223,31 @@ $('#exportStudents').onclick=()=>workbook(students.map(s=>Object.fromEntries(tem
 $('#importFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});if(!rows.length)throw Error('The first worksheet is empty.');const valid=rows.filter(r=>r.admission_no&&r.full_name);if(!valid.length)throw Error('Required columns: admission_no and full_name. Download the template for the correct format.');const existing=new Set(students.map(s=>String(s.admission_no).toLowerCase()));let added=0,skipped=0;for(const raw of valid){const row={};for(const h of templateHeaders)row[h]=raw[h]??null;if(existing.has(String(row.admission_no).toLowerCase())){skipped++;continue;}row.monthly_fee=Number(row.monthly_fee||0);row.status=row.status||'Active';row.created_by=profile.id;const {error}=await client.from('students').insert(row);if(error){skipped++;console.error(error);continue;}existing.add(String(row.admission_no).toLowerCase());added++;}await loadStudents();alert(`Import complete. Added: ${added}. Skipped (duplicates/errors): ${skipped}.`);}catch(err){alert('Import failed: '+err.message);}finally{e.target.value='';}};
 async function renderAttendance(){if(!client)return;$('#attDate').value ||= new Date().toISOString().slice(0,10);const {data,error}=await client.from('attendance').select('student_id,status').eq('attendance_date',$('#attDate').value);if(error){msg(error.message);return;}const map=new Map((data||[]).map(x=>[x.student_id,x.status]));$('#attendanceTable').innerHTML=`<table><thead><tr><th>Admission no.</th><th>Student</th><th>Class</th><th>Status</th></tr></thead><tbody>${students.filter(s=>s.status==='Active').map(s=>`<tr><td>${esc(s.admission_no)}</td><td>${esc(s.full_name)}</td><td>${esc(s.class_name)}</td><td><select data-att="${s.id}"><option ${map.get(s.id)==='Present'?'selected':''}>Present</option><option ${map.get(s.id)==='Absent'?'selected':''}>Absent</option><option ${map.get(s.id)==='Late'?'selected':''}>Late</option><option ${map.get(s.id)==='Leave'?'selected':''}>Leave</option></select></td></tr>`).join('')}</tbody></table>`;}
 $('#attDate').onchange=renderAttendance;$('#saveAttendance').onclick=async()=>{const date=$('#attDate').value;const rows=[...document.querySelectorAll('[data-att]')].map(x=>({student_id:x.dataset.att,attendance_date:date,status:x.value,marked_by:profile.id}));if(!navigator.onLine){rows.forEach(r=>queue('upsert','attendance',r));return;}for(const r of rows){const {error}=await client.from('attendance').upsert(r,{onConflict:'student_id,attendance_date'});if(error){msg(error.message);return;}}msg('Attendance saved.');};
-async function loadFees(){const {data,error}=await client.from('fee_payments').select('*,students(full_name,admission_no)').order('payment_date',{ascending:false});if(error){msg(error.message);return;}$('#feeTable').innerHTML=table((data||[]).map(x=>({student:x.students?.full_name||'',admission_no:x.students?.admission_no||'',amount:'₹'+x.amount,month:x.fee_month,payment_date:x.payment_date,mode:x.payment_mode})),['student','admission_no','amount','month','payment_date','mode']);}
-$('#addPayment').onclick=async()=>{if(!students.length){alert('Add students first.');return;}const id=prompt('Enter the student admission number:');const s=students.find(x=>x.admission_no===id);if(!s){alert('Student not found.');return;}const amount=Number(prompt('Payment amount (₹):'));if(!amount||amount<0)return;const month=prompt('Fee month (e.g. November 2026):','November 2026');const row={student_id:s.id,amount,fee_month:month||'',payment_date:new Date().toISOString().slice(0,10),payment_mode:'Cash',recorded_by:profile.id};const {error}=await client.from('fee_payments').insert(row);if(error){msg(error.message);return;}loadFees();};
+async function loadFees(){
+  if(profile?.role!=='admin')return;
+  const {data,error}=await client.from('fee_payments').select('id,student_id,amount,fee_month,payment_date,payment_mode,students(full_name,admission_no)').order('payment_date',{ascending:false});
+  if(error){$('#feeTable').innerHTML=`<p class="message">${esc(error.message)}</p>`;return;}
+  const payments=data||[],monthLabel=new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(new Date());
+  const summaries=students.filter(s=>s.status==='Active').map(s=>{
+    const paid=payments.filter(p=>p.student_id===s.id&&String(p.fee_month||'').trim().toLowerCase()===monthLabel.toLowerCase()).reduce((n,p)=>n+Number(p.amount||0),0);
+    const fee=Number(s.monthly_fee||0);return {id:s.id,name:s.full_name,admission_no:s.admission_no,class_name:s.class_name,monthly_fee:fee,paid,balance:Math.max(0,fee-paid)};
+  });
+  const totalFee=summaries.reduce((n,x)=>n+x.monthly_fee,0),totalPaid=summaries.reduce((n,x)=>n+x.paid,0),totalDue=summaries.reduce((n,x)=>n+x.balance,0);
+  $('#feeSummaryStats').innerHTML=[['Monthly fees',`₹${totalFee.toLocaleString('en-IN')}`],['Received this month',`₹${totalPaid.toLocaleString('en-IN')}`],['Outstanding',`₹${totalDue.toLocaleString('en-IN')}`]].map(x=>`<div class="stat"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join('');
+  $('#feeTable').innerHTML=summaries.length?`<table><thead><tr><th>Student</th><th>Admission no.</th><th>Class</th><th>Monthly fee</th><th>Paid · ${esc(monthLabel)}</th><th>Balance due</th></tr></thead><tbody>${summaries.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.admission_no)}</td><td>${esc(x.class_name)}</td><td>₹${x.monthly_fee.toFixed(2)}</td><td>₹${x.paid.toFixed(2)}</td><td><b>₹${x.balance.toFixed(2)}</b></td></tr>`).join('')}</tbody></table>`:'<p class="muted">No active student records.</p>';
+  $('#feeHistory').innerHTML=payments.length?`<table><thead><tr><th>Student</th><th>Month</th><th>Amount</th><th>Payment date</th><th>Mode</th><th>Actions</th></tr></thead><tbody>${payments.map(p=>`<tr><td>${esc(p.students?.full_name||'')}</td><td>${esc(p.fee_month||'')}</td><td>₹${Number(p.amount||0).toFixed(2)}</td><td>${esc(p.payment_date||'')}</td><td>${esc(p.payment_mode||'')}</td><td><button class="soft" data-fee-edit="${esc(p.id)}">Edit</button> <button class="danger" data-fee-delete="${esc(p.id)}">Delete</button></td></tr>`).join('')}</tbody></table>`:'<p class="muted">No payment records yet.</p>';
+  $('#feeHistory').querySelectorAll('[data-fee-edit]').forEach(b=>b.onclick=async()=>{
+    const p=payments.find(x=>x.id===b.dataset.feeEdit);if(!p)return;
+    const amount=prompt('Payment amount (₹):',String(p.amount));if(amount===null)return;
+    const fee_month=prompt('Fee month:',p.fee_month||monthLabel);if(fee_month===null)return;
+    const payment_date=prompt('Payment date (YYYY-MM-DD):',p.payment_date||localDateString());if(payment_date===null)return;
+    const payment_mode=prompt('Payment mode:',p.payment_mode||'Cash');if(payment_mode===null)return;
+    const {error}=await client.from('fee_payments').update({amount:Number(amount),fee_month,payment_date,payment_mode}).eq('id',p.id);
+    if(error){msg(error.message);return;}await loadFees();
+  });
+  $('#feeHistory').querySelectorAll('[data-fee-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this payment record?'))return;const {error}=await client.from('fee_payments').delete().eq('id',b.dataset.feeDelete);if(error){msg(error.message);return;}await loadFees();});
+}
+$('#addPayment').onclick=async()=>{if(profile?.role!=='admin')return;if(!students.length){alert('Add students first.');return;}const id=prompt('Enter the student admission number:');if(!id)return;const s=students.find(x=>x.admission_no===id);if(!s){alert('Student not found.');return;}const amount=Number(prompt('Payment amount (₹):'));if(!amount||amount<0)return;const month=prompt('Fee month (e.g. November 2026):',new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric'}).format(new Date()));if(month===null)return;const payment_mode=prompt('Payment mode:','Cash');if(payment_mode===null)return;const payment_date=prompt('Payment date (YYYY-MM-DD):',localDateString());if(payment_date===null)return;const row={student_id:s.id,amount,fee_month:month,payment_date,payment_mode,recorded_by:profile.id};const {error}=await client.from('fee_payments').insert(row);if(error){msg(error.message);return;}await loadFees();};
 
 // Staff directory and private staff photo uploads (Admin-managed).
 async function staffPhotoUrl(path){
@@ -233,8 +260,8 @@ async function loadStaffDirectory(){
   const host=$('#staffTable');if(!host||!client)return;
   host.innerHTML='<p class="muted">Loading staff profiles…</p>';
   const {data,error}=await client.from('staff_directory').select('*').order('full_name');
-  if(error){host.innerHTML='<p class="message">Could not load staff directory: '+esc(error.message)+'</p>';return;}
-  staffMembers=data||[];await renderStaffDirectory();
+  if(error){host.innerHTML='<p class="message">Could not load staff directory: '+esc(error.message)+'</p>';await loadTeacherAssignments();return;}
+  staffMembers=data||[];await renderStaffDirectory();await loadTeacherAssignments();
 }
 async function renderStaffDirectory(){
   const host=$('#staffTable');if(!host)return;
@@ -287,8 +314,9 @@ $('#staffForm').onsubmit=async e=>{
 // Daily child records: one editable record per child and date.
 function selectedDailyStudent(){return $('#dailyStudent')?.value||'';}
 async function loadDailyRecords(){
-  if(!client||!students.length)return;
-  $('#dailyDate').value ||= localDateString();
+  if(!client)return;
+  if(!students.length){$('#dailyStudent').innerHTML='';$('#dailyTable').innerHTML='<p class="notice">No students are available for this login. Ask the Admin to assign your teacher account to the correct class.</p>';return;}
+  $('#dailyDate').value ||= localDateString();$('#dailyRangeStart').value ||= $('#dailyDate').value;renderDailyDateButtons();
   const className=$('#dailyClass').value;
   const filtered=students.filter(s=>s.status==='Active'&&(!className||s.class_name===className));
   $('#dailyStudent').innerHTML=filtered.map(s=>`<option value="${esc(s.id)}">${esc(s.full_name)} · ${esc(s.class_name)}</option>`).join('');
@@ -310,7 +338,10 @@ async function renderDailyTable(){
   $('#dailyTable').innerHTML=(data||[]).length?`<table><thead><tr><th>Date</th><th>Child</th><th>Class</th><th>Learning</th><th>Activities</th><th>Type</th><th>Action</th></tr></thead><tbody>${data.map(r=>`<tr><td>${esc(r.record_date)}</td><td>${esc(r.students?.full_name||'')}</td><td>${esc(r.students?.class_name||'')}</td><td>${esc(r.learning_topics||'')}</td><td>${esc(r.activities||'')}</td><td>${r.is_demo?'<span class="demo-tag">DEMO</span>':'Actual'}</td><td><button class="soft" data-daily-edit="${esc(r.student_id)}" data-date="${esc(r.record_date)}">Edit</button></td></tr>`).join('')}</tbody></table>`:'<p class="muted">No daily records saved yet.</p>';
   $('#dailyTable').querySelectorAll('[data-daily-edit]').forEach(b=>b.onclick=async()=>{$('#dailyStudent').value=b.dataset.dailyEdit;$('#dailyDate').value=b.dataset.date;await loadDailyRecordForSelection();});
 }
-$('#dailyDate').onchange=loadDailyRecordForSelection;
+function renderDailyDateButtons(){const start=$('#dailyRangeStart')?.value;if(!start||!$('#dailyDateButtons'))return;const count=Number($('#dailyRangeDays')?.value||5);const base=new Date(start+'T12:00:00');window.dishaEntryDates=Array.from({length:count},(_,i)=>{const d=new Date(base);d.setDate(base.getDate()+i);return localDateString(d);});$('#dailyDateButtons').innerHTML=window.dishaEntryDates.map((d,i)=>`<button type="button" class="${d===$('#dailyDate').value?'primary':'soft'}" data-entry-date="${d}">${d}<small>Day ${i+1}</small></button>`).join('');$('#dailyDateButtons').querySelectorAll('[data-entry-date]').forEach(b=>b.onclick=async()=>{$('#dailyDate').value=b.dataset.entryDate;await loadDailyRecordForSelection();renderDailyDateButtons();});}
+$('#makeDailyDateButtons').onclick=async()=>{if(!$('#dailyRangeStart').value)$('#dailyRangeStart').value=$('#dailyDate').value||localDateString();renderDailyDateButtons();const first=window.dishaEntryDates?.[0];if(first){$('#dailyDate').value=first;await loadDailyRecordForSelection();renderDailyDateButtons();}};
+$('#dailyRangeStart').onchange=renderDailyDateButtons;$('#dailyRangeDays').onchange=renderDailyDateButtons;
+$('#dailyDate').onchange=()=>{loadDailyRecordForSelection();renderDailyDateButtons();};
 $('#dailyStudent').onchange=loadDailyRecordForSelection;
 $('#dailyClass').onchange=loadDailyRecords;
 $('#refreshDaily').onclick=renderDailyTable;
@@ -321,7 +352,7 @@ $('#dailyRecordForm').onsubmit=async e=>{
   for(const k of ['learning_topics','activities','participation','behaviour','food_snacks','teacher_notes'])row[k]=String(f.get(k)||'').trim();
   const {error}=await client.from('daily_child_records').upsert(row,{onConflict:'student_id,record_date'});
   if(error){$('#dailyMessage').textContent='Could not save: '+error.message;return;}
-  $('#dailyMessage').textContent='Daily child record saved successfully.';await renderDailyTable();
+  $('#dailyMessage').textContent='Daily child record saved successfully.';await renderDailyTable();const dates=window.dishaEntryDates||[],next=dates.find(d=>d>date);if(next){$('#dailyDate').value=next;await loadDailyRecordForSelection();renderDailyDateButtons();$('#dailyMessage').textContent=`Saved ${date}. Next date ${next} is ready for entry.`;}
 };
 
 // Timetable CRUD. Breaks, assembly, lunch and dispersal are normal editable activities.
@@ -332,6 +363,17 @@ async function loadTimetable(){
     client.from('profiles').select('id,display_name,role').in('role',['admin','teacher']).order('display_name')
   ]);
   if(error){$('#timetableTable').innerHTML=`<p class="message">${esc(error.message)}</p>`;return;}
+  let allowed=['Playgroup','Nursery','Junior KG','Senior KG'];
+  if(profile?.role==='teacher'){
+    const {data:assignments,error:assignmentError}=await client.from('teacher_class_assignments').select('class_name').eq('teacher_user_id',profile.id);
+    if(assignmentError){$('#timetableTable').innerHTML=`<p class="message">${esc(assignmentError.message)}</p>`;return;}
+    allowed=(assignments||[]).map(x=>x.class_name);
+    if(!allowed.length)$('#timetableMessage').textContent='No classes assigned to this teacher yet. Ask Admin to assign your class in Staff Access.';
+  }
+  window.dishaAllowedClasses=allowed;
+  const classSelect=$('#timetableForm').elements.class_name,selectedClass=classSelect.value;
+  classSelect.innerHTML=allowed.map(x=>`<option>${esc(x)}</option>`).join('')||'<option value="">No assigned class</option>';
+  if(allowed.includes(selectedClass))classSelect.value=selectedClass;
   const staffSelect=$('#timetableStaff'),previous=staffSelect.value;
   staffSelect.innerHTML='<option value="">Not assigned</option>'+(staffRows||[]).map(p=>`<option value="${esc(p.id)}">${esc(p.display_name)} (${esc(p.role)})</option>`).join('');
   staffSelect.value=previous;
@@ -341,7 +383,8 @@ async function loadTimetable(){
 function renderTimetable(){
   const c=$('#timetableFilter').value,d=$('#timetableDayFilter').value;
   const rows=(window.dishaTimetableRows||[]).filter(r=>(!c||r.class_name===c)&&(!d||r.weekday===d));
-  $('#timetableTable').innerHTML=rows.length?`<table><thead><tr><th>Class</th><th>Day</th><th>Time</th><th>Activity</th><th>Teacher ID</th><th>Actions</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.class_name)}</td><td>${esc(r.weekday)}</td><td>${esc((r.start_time||'').slice(0,5))}–${esc((r.end_time||'').slice(0,5))}</td><td>${esc(r.activity)}</td><td>${esc(window.dishaStaffProfiles?.find(p=>p.id===r.assigned_staff)?.display_name||'—')}</td><td><button class="soft" data-timetable-edit="${esc(r.id)}">Edit</button> <button class="danger" data-timetable-delete="${esc(r.id)}">Delete</button></td></tr>`).join('')}</tbody></table>`:'<p class="muted">No timetable periods found. Use the form or create the suggested timetable for all classes.</p>';
+  const groups=new Map();rows.forEach(r=>{const k=`${r.class_name}||${r.weekday}`;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r);});
+  $('#timetableTable').innerHTML=rows.length?[...groups.entries()].map(([key,items])=>{const [cl,day]=key.split('||');return `<section class="timetable-day-card"><h3>${esc(cl)} · ${esc(day)}</h3><table><thead><tr><th>Time</th><th>Activity / subject</th><th>Assigned teacher</th><th>Actions</th></tr></thead><tbody>${items.map(r=>`<tr><td>${esc((r.start_time||'').slice(0,5))}–${esc((r.end_time||'').slice(0,5))}</td><td>${esc(r.activity)}</td><td>${esc(window.dishaStaffProfiles?.find(p=>p.id===r.assigned_staff)?.display_name||'—')}</td><td><button class="soft" data-timetable-edit="${esc(r.id)}">Edit</button> <button class="danger" data-timetable-delete="${esc(r.id)}">Delete</button></td></tr>`).join('')}</tbody></table></section>`;}).join(''):'<p class="muted">No timetable periods found. Use the form or create the suggested timetable for your available classes.</p>';
   $('#timetableTable').querySelectorAll('[data-timetable-edit]').forEach(b=>b.onclick=()=>{const r=window.dishaTimetableRows.find(x=>x.id===b.dataset.timetableEdit),f=$('#timetableForm');for(const [k,v] of Object.entries(r))if(f.elements[k])f.elements[k].value=v??'';});
   $('#timetableTable').querySelectorAll('[data-timetable-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this timetable period?'))return;const {error}=await client.from('timetable').delete().eq('id',b.dataset.timetableDelete);if(error){$('#timetableMessage').textContent=error.message;return;}await loadTimetable();});
 }
@@ -354,23 +397,27 @@ $('#timetableForm').onsubmit=async e=>{
   if(row.end_time<=row.start_time){$('#timetableMessage').textContent='End time must be after start time.';return;}
   const result=id?await client.from('timetable').update(row).eq('id',id):await client.from('timetable').insert(row);
   if(result.error){$('#timetableMessage').textContent='Could not save: '+result.error.message;return;}
-  $('#timetableMessage').textContent='Timetable period saved.';e.currentTarget.reset();await loadTimetable();
+  $('#timetableMessage').textContent='Timetable period saved and published. Parents will see the saved timetable after refreshing their dashboard.';e.currentTarget.reset();await loadTimetable();
 };
 async function createDefaultTimetables(){
   const existing=window.dishaTimetableRows||[];
-  const classes=['Playgroup','Nursery','Junior KG','Senior KG'];
+  const classes=window.dishaAllowedClasses||['Playgroup','Nursery','Junior KG','Senior KG'];
   const slots=[
     ['09:00','09:20','Assembly & welcome'],['09:20','10:00','Period 1 – Montessori work cycle'],['10:00','10:10','Break'],['10:10','10:50','Period 2 – Language'],['10:50','11:00','Break'],['11:00','11:40','Period 3 – Numeracy'],['11:40','11:50','Break'],['11:50','12:30','Period 4 – Sensorial / practical life'],['12:30','13:30','Lunch'],['13:30','14:10','Period 5 – Art / music'],['14:10','14:20','Break'],['14:20','15:00','Period 6 – Outdoor play'],['15:00','15:10','Break'],['15:10','15:50','Period 7 – Story / group activity'],['15:50','16:00','Dispersal']
   ];
   const days=['Monday','Tuesday','Wednesday','Thursday','Friday'];let inserted=0,skipped=0;
   for(const cl of classes){
-    if(existing.some(r=>r.class_name===cl)){skipped++;continue;}
-    const rows=days.flatMap(day=>slots.map(s=>({class_name:cl,weekday:day,start_time:s[0],end_time:s[1],activity:s[2]})));
-    const {error}=await client.from('timetable').insert(rows);
-    if(error){$('#timetableMessage').textContent='Could not create '+cl+': '+error.message;return;}
-    inserted++;
+    let addedDays=0;
+    for(const day of days){
+      if(existing.some(r=>r.class_name===cl&&r.weekday===day)){skipped++;continue;}
+      const rows=slots.map(s=>({class_name:cl,weekday:day,start_time:s[0],end_time:s[1],activity:s[2]}));
+      const {error}=await client.from('timetable').insert(rows);
+      if(error){$('#timetableMessage').textContent='Could not create '+cl+' / '+day+': '+error.message;return;}
+      addedDays++;
+    }
+    if(addedDays)inserted++;
   }
-  $('#timetableMessage').textContent=`Default timetable created for ${inserted} class(es). Existing timetable classes skipped: ${skipped}. Edit any period above.`;
+  $('#timetableMessage').textContent=`Default timetable added for ${inserted} class(es). ${skipped} class/day schedule(s) already existed and were kept unchanged.`;
   await loadTimetable();
 }
 
@@ -411,16 +458,63 @@ $('#generateDemoRecords').onclick=async()=>{
     ]);
     const report_data={
       attendance:(att.data||[]).map(x=>({date:x.attendance_date,status:x.status})),
-      daily_records:(daily.data||[]).map(x=>({date:x.record_date,learning_topics:x.learning_topics,activities:x.activities,participation:x.participation,behaviour:x.behaviour,food_snacks:x.food_snacks,teacher_notes:x.teacher_notes,is_demo:true})),
+      daily_records:(daily.data||[]).map(x=>({date:x.record_date,learning_topics:x.learning_topics,activities:x.activities,participation:x.participation,behaviour:x.behaviour,food_snacks:x.food_snacks,teacher_notes:x.teacher_notes,is_demo:!!x.is_demo})),
       progress:(progress.data||[]).map(x=>({date:x.recorded_on,domain:x.domain,note:x.note})),
       observations:(observations.data||[]).map(x=>({date:x.observed_on,area:x.learning_area,activity:x.activity,observation:x.observation,level:x.progress_level}))
     };
-    const {error}=await client.from('weekly_reports').upsert({student_id:s.id,week_start:start,week_end:end,report_data,generated_by:profile.id,is_demo:true},{onConflict:'student_id,week_start,week_end'});
+    const {error}=await client.from('weekly_reports').upsert({student_id:s.id,week_start:start,week_end:end,report_data,generated_by:profile.id,is_demo:report_data.daily_records.some(x=>x.is_demo)},{onConflict:'student_id,week_start,week_end'});
     if(error){$('#dailyMessage').textContent='Daily demo records saved, but report creation failed: '+error.message;return;}
   }
   $('#dailyMessage').textContent=`Created ${inserted} demo daily records. ${kept} existing records were kept. Friday report snapshots saved for ${active.length} active student(s). All are marked DEMO / TEST DATA.`;
   await renderDailyTable();
 };
+
+
+// Admin-controlled class assignments. The database policies enforce these limits too.
+async function loadTeacherAssignments(){
+  if(profile?.role!=='admin')return;
+  const select=$('#teacherAssignmentTeacher');if(!select)return;
+  const [{data:teachers,error:tErr},{data:assignments,error:aErr}]=await Promise.all([
+    client.from('profiles').select('id,display_name').eq('role','teacher').order('display_name'),
+    client.from('teacher_class_assignments').select('teacher_user_id,class_name')
+  ]);
+  if(tErr||aErr){$('#assignmentMessage').textContent=(tErr||aErr).message;return;}
+  window.dishaTeachers=teachers||[];window.dishaTeacherAssignments=assignments||[];
+  select.innerHTML=(teachers||[]).map(t=>`<option value="${esc(t.id)}">${esc(t.display_name)} · ${esc(String(t.id).slice(0,8))}</option>`).join('')||'<option value="">No teacher login found</option>';
+  renderTeacherAssignmentChecks();select.onchange=renderTeacherAssignmentChecks;
+}
+function renderTeacherAssignmentChecks(){
+  const id=$('#teacherAssignmentTeacher')?.value,assigned=(window.dishaTeacherAssignments||[]).filter(x=>x.teacher_user_id===id).map(x=>x.class_name);
+  document.querySelectorAll('[data-assigned-class]').forEach(c=>c.checked=assigned.includes(c.value));
+}
+$('#teacherAssignmentForm').onsubmit=async e=>{
+  e.preventDefault();if(profile?.role!=='admin')return;
+  const teacher=$('#teacherAssignmentTeacher').value;if(!teacher){$('#assignmentMessage').textContent='Create a teacher login first.';return;}
+  const classes=[...document.querySelectorAll('[data-assigned-class]:checked')].map(x=>x.value);
+  const del=await client.from('teacher_class_assignments').delete().eq('teacher_user_id',teacher);if(del.error){$('#assignmentMessage').textContent=del.error.message;return;}
+  if(classes.length){const ins=await client.from('teacher_class_assignments').insert(classes.map(class_name=>({teacher_user_id:teacher,class_name,created_by:profile.id})));if(ins.error){$('#assignmentMessage').textContent=ins.error.message;return;}}
+  $('#assignmentMessage').textContent=`Saved. This teacher can access: ${classes.join(', ')||'no classes'}.`;await loadTeacherAssignments();
+};
+
+// Editable inventory register: on-hand stock, incoming/pending quantity and reorder alert.
+async function loadInventory(){
+  const {data,error}=await client.from('inventory_items').select('*').order('item_name');
+  if(error){$('#inventoryTable').innerHTML=`<p class="message">${esc(error.message)}</p>`;return;}
+  const rows=data||[],inStock=rows.filter(x=>Number(x.quantity_on_hand||0)>0).length,pending=rows.filter(x=>Number(x.quantity_pending||0)>0).length,low=rows.filter(x=>Number(x.quantity_on_hand||0)<=Number(x.reorder_level||0)).length;
+  $('#inventoryStats').innerHTML=[['Different items',rows.length],['Items in stock',inStock],['Items with pending orders',pending],['Low / out of stock',low]].map(x=>`<div class="stat"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join('');
+  $('#inventoryTable').innerHTML=rows.length?`<table><thead><tr><th>Item</th><th>Category</th><th>Available</th><th>Pending</th><th>Reorder at</th><th>Status</th><th>Supplier</th><th>Actions</th></tr></thead><tbody>${rows.map(x=>{const q=Number(x.quantity_on_hand||0),r=Number(x.reorder_level||0),status=q<=0?'Out of stock':q<=r?'Low stock':'In stock';return `<tr><td><b>${esc(x.item_name)}</b><br><small>${esc(x.notes||'')}</small></td><td>${esc(x.category||'')}</td><td>${q} ${esc(x.unit)}</td><td>${Number(x.quantity_pending||0)} ${esc(x.unit)}</td><td>${r} ${esc(x.unit)}</td><td>${status==='In stock'?'<span class="tag">In stock</span>':`<span class="low-stock">${status}</span>`}</td><td>${esc(x.supplier||'')}</td><td><button class="soft" data-inventory-edit="${esc(x.id)}">Edit</button> <button class="danger" data-inventory-delete="${esc(x.id)}">Delete</button></td></tr>`;}).join('')}</tbody></table>`:'<p class="muted">No inventory items yet. Add the first item using the form above.</p>';
+  $('#inventoryTable').querySelectorAll('[data-inventory-edit]').forEach(b=>b.onclick=()=>{const x=rows.find(r=>r.id===b.dataset.inventoryEdit),f=$('#inventoryForm');for(const [k,v] of Object.entries(x||{}))if(f.elements[k])f.elements[k].value=v??'';f.scrollIntoView({behavior:'smooth',block:'center'});});
+  $('#inventoryTable').querySelectorAll('[data-inventory-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this inventory item?'))return;const {error}=await client.from('inventory_items').delete().eq('id',b.dataset.inventoryDelete);if(error){$('#inventoryMessage').textContent=error.message;return;}await loadInventory();});
+}
+$('#inventoryForm').onsubmit=async e=>{
+  e.preventDefault();const f=e.currentTarget,values=Object.fromEntries(new FormData(f)),id=values.id;delete values.id;
+  const row={...values,quantity_on_hand:Number(values.quantity_on_hand||0),quantity_pending:Number(values.quantity_pending||0),reorder_level:Number(values.reorder_level||0),updated_at:new Date().toISOString()};
+  if(row.quantity_on_hand<0||row.quantity_pending<0||row.reorder_level<0){$('#inventoryMessage').textContent='Stock quantities cannot be negative.';return;}
+  const result=id?await client.from('inventory_items').update(row).eq('id',id):await client.from('inventory_items').insert({...row,created_by:profile.id});
+  if(result.error){$('#inventoryMessage').textContent=result.error.message;return;}
+  f.reset();f.elements.quantity_on_hand.value='0';f.elements.quantity_pending.value='0';f.elements.reorder_level.value='0';f.elements.unit.value='pieces';$('#inventoryMessage').textContent='Inventory item saved.';await loadInventory();
+};
+$('#clearInventory').onclick=()=>{const f=$('#inventoryForm');f.reset();f.elements.id.value='';f.elements.quantity_on_hand.value='0';f.elements.quantity_pending.value='0';f.elements.reorder_level.value='0';f.elements.unit.value='pieces';};
 
 $('#exportBackup').onclick=()=>{const blob=new Blob([JSON.stringify({exported_at:new Date().toISOString(),students},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='disha-preschool-backup.json';a.click();URL.revokeObjectURL(a.href);};$('#syncNow').onclick=syncQueue;window.addEventListener('online',syncQueue);window.addEventListener('online',()=>$('#connection').textContent='Connected');window.addEventListener('offline',()=>$('#connection').textContent='Offline');
 if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).then(reg=>reg.update()).catch(console.error));init();

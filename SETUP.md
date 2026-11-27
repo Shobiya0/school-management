@@ -8,14 +8,14 @@ This is a single-school web/PWA project. Vercel serves the application; Supabase
 - Supabase email/password sign-in, sign-out, password change and password-reset email.
 - Admin/Teacher role profile lookup and UI navigation restrictions, backed by database RLS policies.
 - Student add/edit/search, Excel `.xlsx` import (first worksheet) and `.xlsx` export; template download; duplicate admission-number checks.
-- Daily attendance save and fee payment recording/listing.
+- Daily attendance save, date-wise daily child records, editable class timetable, live inventory and Admin fee/payment management.
 - JSON student backup download.
 - Offline app shell and a local pending-write queue for student/attendance edits made while an authenticated session is active. Pending writes attempt to sync when online.
 - SQL schema includes additional tables for admissions, Montessori observations, progress, timetable, daycare, inventory and audit records.
 
-## Important: this is a foundation release, not a completed school ERP
+## Important: this is a school-management foundation, not a completed school ERP
 
-The Admissions, Montessori, Child Progress, Timetable, Daycare and Inventory screens are currently placeholders. Their database tables exist, but their complete user workflows are not implemented in this package. Offline mode caches the app shell and queues a limited set of edits; it is not a full offline copy of all school records, and first-time login requires internet. Do not enter real student health/family information until the school's access rules and privacy requirements have been reviewed and tested. No system can honestly be called “pakka” until it is configured against your own Supabase project and tested on your actual devices.
+Admissions, Montessori observations, Child Progress and Daycare still need full workflow screens. Timetable, Daily child records and Inventory are now editable modules, and Fees includes payment history and current-month balances. Offline mode caches the app shell and queues a limited set of edits; it is not a full offline copy of all school records, and first-time login requires internet. Do not enter real student health/family information until the school's access rules and privacy requirements have been reviewed and tested. No system can honestly be called “pakka” until it is configured against your own Supabase project and tested on your actual devices.
 
 ## 1. Configure Supabase
 
@@ -122,3 +122,54 @@ password entries match, and saves the password with Supabase Auth.
 - Existing attendance, child_progress, montessori_observations, parent links and parent dashboard RPCs are retained. The update adds only `daily_child_records` and `weekly_reports`, plus access policies and one parent report RPC.
 - Parent access is limited to children linked through `parent_student_links`. Parents cannot create or edit daily records or timetables.
 - Weekly report generation is triggered when a parent opens the dashboard on Friday. For a demo/test report immediately, use the staff-side demo generator.
+
+## Update 5: teacher class access, inventory, fees and timetable/report corrections
+
+Run `supabase/migrations/005_access_inventory_fees_reports.sql` in Supabase SQL Editor **after** migration 004. This migration adds a teacher-to-class assignment table and a live inventory register, restricts teachers to their assigned classes, adds a parent fee-summary RPC, refreshes saved weekly reports from current records, and updates the parent timetable RPC. It does not delete student, attendance, payment, timetable or parent-link records.
+
+### Assign teachers to classes
+
+1. Sign in as Admin.
+2. Open **Staff access**.
+3. Under **Teacher class access**, select a teacher login.
+4. Tick the class or classes handled by that teacher and save.
+5. Repeat for every teacher.
+
+After the migration, teachers will not see student records until an Admin assigns at least one class. Admin continues to see all students. Parent accounts continue to see only their linked child or children. Teachers cannot open Fees or Staff access.
+
+### Add records for several past dates
+
+1. Open **Daily child records** and select the child.
+2. Set **Start date** to the first date (for example, 21 November 2026).
+3. Select **5 calendar days** and click **Show dates**.
+4. Select the first date, enter that day's details and save.
+5. The next date is selected automatically. Enter and save each remaining day's details.
+
+Each date is stored as its own child/date record. Existing records for that child and date load into the form and can be edited.
+
+### Timetable
+
+Use the **Timetable** section, not the old sample table in School records. Add or edit periods for the class and weekday, assign a teacher if needed, and save. The saved timetable is stored in the existing `timetable` table. Admin can edit all classes; teachers can edit only assigned classes. Parents see the saved timetable for their linked child's class after refreshing the Parent dashboard.
+
+### Inventory
+
+Use **Inventory** to add or edit each stock item. Enter available quantity, pending/ordered quantity, unit, and reorder level. The list shows available stock, pending quantity and an automatic In stock / Low stock / Out of stock status. These records are stored in the new `inventory_items` table; the older sample inventory card is no longer used as a live register.
+
+### Fees
+
+Fees are Admin-only in the staff workspace. The screen shows each active child's monthly fee, amount paid for the current month and the estimated current-month balance, plus editable payment history. The parent portal shows the current month's fee summary and that parent's linked child's payment history. Keep each student's `monthly_fee` current in the student record. The balance is calculated from the monthly fee minus payments recorded under the matching month label (for example, `November 2026`).
+
+### Weekly reports
+
+When a parent opens the portal, saved weekly report snapshots are refreshed from the actual attendance, daily child records, child progress and Montessori observations for their child. This means staff backdating or editing a record updates the corresponding saved report history the next time the parent opens the dashboard. The Friday popup remains tied to the current week's report.
+
+### Final checks
+
+- [ ] Run migration 005 successfully.
+- [ ] Assign every teacher to the correct class(es) in Staff access.
+- [ ] Sign in as a teacher and confirm only assigned-class children appear.
+- [ ] Try saving five dated records for a test child.
+- [ ] Edit a timetable period, refresh, and verify it remains saved.
+- [ ] Add an inventory item and verify available / pending quantities.
+- [ ] Record a fee payment and verify current-month balance.
+- [ ] Sign in as a parent and verify only linked-child details, timetable, fee summary and refreshed weekly report.
